@@ -100,7 +100,13 @@ Tests/HuddleCoreTests Swift Testing suites, with JSON fixtures in Fixtures/
 - **Docs layout:** `README.md` stays short and links to `docs/*.md` (install, using, other machines, inline approvals, limitations, development), `docs/specs/` (one spec per feature, `00-prototype.md` is the original product spec, `status.md` says what is verified). Put detail in the matching doc, not the README.
 - **A new UI state:** add it to `Snapshots.swift` so `--snapshot` covers it.
 
-## Commits
+## Commits and pull requests
 
 - **Prefix:** `feat:`, `fix:`, `docs:` or `build:`, then a plain description.
-- **Branch:** work on a branch off `main` and squash-merge it. Commit only when asked.
+- **Branch and PR:** work on a branch off `main` and open a pull request; do not commit to `main`. Commit only when asked. **Never squash-merge:** merge with a merge commit so the branch's commits stay.
+- **Every PR description has four parts** (the template in `.github/pull_request_template.md` has the headings):
+  - **What:** what changed, in a few lines.
+  - **Why:** the problem or the request behind it.
+  - **Before and after:** pictures of the same screen or state, before and after. A change with nothing to see (a refactor, a test, CI) says "no visible change" and shows the test or CI result instead.
+  - **Clip:** a new feature also gets a short clip (a few seconds, one feature) showing it work. Record it with the demo recorder (`--record`, see `scripts/make-demo.sh`) or `--snapshot` for stills; both use the fake T3.
+- **Where the pictures live:** on the `pr-media` branch (never merged), under `pr-media/<branch name>/`, linked from the PR body as `https://github.com/<owner>/<repo>/blob/pr-media/<path>?raw=true`. `gh` cannot upload attachments. Use fake data only, never real threads or machines.
