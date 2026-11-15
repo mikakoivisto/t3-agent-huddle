@@ -8,6 +8,7 @@ import HuddleCore
 final class StatusItemController: NSObject, NSMenuDelegate {
     private var roItem: NSMenuItem?
     private var settleItem: NSMenuItem?
+    private var signOutItem: NSMenuItem?
     private let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
     private let model: HuddleModel
     private var cancellable: AnyCancellable?
@@ -33,6 +34,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let approvals = NSMenuItem(title: "Inline approvals…", action: #selector(showApprovals), keyEquivalent: "")
         approvals.target = self
         menu.addItem(approvals)
+        let signOut = NSMenuItem(title: "Sign Out of T3 Code…", action: #selector(signOut), keyEquivalent: "")
+        signOut.target = self; signOutItem = signOut
+        menu.addItem(signOut)
         let about = NSMenuItem(title: "About Agent Huddle", action: #selector(showAbout), keyEquivalent: "")
         about.target = self
         menu.addItem(.separator()); menu.addItem(about); menu.addItem(quit)
@@ -70,6 +74,18 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     @objc private func toggleSettle() { model.setCloseSettles(!model.closeSettles) }
     @objc private func showApprovals() { ApprovalsWindowController.shared.show(model: model) }
     @objc private func showAbout() { About.show() }
+    @objc private func signOut() {
+        let alert = NSAlert()
+        alert.messageText = "Sign out of T3 Code?"
+        alert.informativeText = "Agent Huddle forgets its sign-in on this Mac and shows Connect again, so you can sign in at a different access level. "
+            + "T3 keeps the session until you revoke it (t3 auth session list, then t3 auth session revoke <id>). Inline approvals logins are not affected."
+        alert.addButton(withTitle: "Sign Out")
+        alert.addButton(withTitle: "Cancel")
+        NSApp.activate(ignoringOtherApps: true)
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        model.signOut()
+        model.showWidget()   // so the Connect button and the note are in view
+    }
     @objc private func quit() { NSApp.terminate(nil) }
 }
 
@@ -77,6 +93,7 @@ extension StatusItemController {
     func menuNeedsUpdate(_ menu: NSMenu) {
         roItem?.state = model.readOnly ? .on : .off
         settleItem?.state = model.closeSettles ? .on : .off
+        signOutItem?.isHidden = !model.isSignedIn
     }
 }
 

@@ -214,8 +214,17 @@ struct SessionRow: View {
                         .foregroundStyle(session.needsAttention ? Theme.lime : Theme.grey).lineLimit(1)
                     InfoLine(model: model, session: session)
                 }
-                VStack(spacing: 6) {
-                    IconButton(system: "arrow.up.forward.square", help: "Open in T3 Code") { Task { await model.jump(session: session) } }
+                VStack(alignment: .trailing, spacing: 6) {
+                    HStack(spacing: 0) {
+                        if model.canMessage(session) {
+                            let open = model.composingThreadId == session.threadId
+                            Button { open ? model.closeComposer(session.threadId) : model.openComposer(session.threadId) } label: {
+                                Image(systemName: open ? "bubble.left.fill" : "bubble.left").font(.system(size: 14, weight: .semibold))
+                                    .foregroundStyle(open ? Theme.lime : Theme.grey).frame(width: 26, height: 26).contentShape(Rectangle())
+                            }.buttonStyle(.plain).help("Message this thread")
+                        }
+                        IconButton(system: "arrow.up.forward.square", help: "Open in T3 Code") { Task { await model.jump(session: session) } }
+                    }
                     if armed {
                         Button { model.closeTapped(session.threadId) } label: { Pill(text: "Close", fill: Theme.red, fg: .white) }.buttonStyle(.plain)
                     } else {
@@ -227,6 +236,14 @@ struct SessionRow: View {
             .onTapGesture { model.openDetail(session.threadId) }
 
             if showsPanels { AttentionPanels(model: model, session: session) }
+            if showsPanels, model.composingThreadId == session.threadId, model.canMessage(session) {
+                MessageComposer(model: model, store: model.composer, session: session)
+            }
+            if let note = model.rowToasts[session.threadId] {
+                Text(verbatim: note).font(.system(size: 12.5, weight: .bold)).foregroundStyle(.black)
+                    .padding(.horizontal, 10).padding(.vertical, 4).background(Capsule().fill(Theme.lime))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
         }
         .frame(maxWidth: .infinity)
         .padding(.horizontal, 12).padding(.vertical, 10)
@@ -336,6 +353,7 @@ struct QuestionPanel: View {
     var body: some View {
         let selected = model.selections[question.requestId]
         let ui = model.questionStates[question.requestId] ?? .pending
+        let writing = model.writingAnswerFor == question.requestId && question.freeTextAnswerable
         VStack(alignment: .leading, spacing: 10) {
             if let tag = question.tag {
                 Text(verbatim: tag.uppercased()).font(.system(size: 12, weight: .heavy)).foregroundStyle(.black)
@@ -343,35 +361,47 @@ struct QuestionPanel: View {
             }
             Text(verbatim: question.prompt).font(.system(size: 17, weight: .bold)).foregroundStyle(.white)
                 .fixedSize(horizontal: false, vertical: true)
-            if question.answerableInWidget {
-                ForEach(question.options, id: \.self) { opt in
-                    let on = selected == opt.label
-                    Button { model.select(option: opt.label, for: question) } label: {
-                        HStack(spacing: 10) {
-                            Circle().fill(on ? Theme.lime : Color.clear).frame(width: 9, height: 9)
-                                .overlay(Circle().stroke(on ? Theme.lime : Theme.dim, lineWidth: 1.5))
-                            Text(verbatim: opt.label).font(.system(size: 16, weight: .medium)).foregroundStyle(.white)
-                            Spacer()
-                        }
-                        .padding(.horizontal, 10).padding(.vertical, 8)
-                        .background(RoundedRectangle(cornerRadius: 8).fill(Color.white.opacity(0.06)))
-                        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Theme.lime, lineWidth: on ? 1.5 : 0))
-                    }.buttonStyle(.plain)
-                }
-            }
-            if case .error(let msg) = ui {
-                Text(verbatim: msg).font(.system(size: 12)).foregroundStyle(Theme.red).lineLimit(2)
-            }
-            HStack(spacing: 8) {
+            if writing {
+                AnswerEditor(model: model, store: model.composer, session: session, question: question)
+            } else {
                 if question.answerableInWidget {
-                    Button { Task { await model.sendAnswer(threadId: session.threadId) } } label: {
-                        Pill(text: ui == .sending ? "Sending…" : "Send", fill: selected == nil ? Theme.dim : Theme.lime)
+                    ForEach(question.options, id: \.self) { opt in
+                        let on = selected == opt.label
+                        Button { model.select(option: opt.label, for: question) } label: {
+                            HStack(spacing: 10) {
+                                Circle().fill(on ? Theme.lime : Color.clear).frame(width: 9, height: 9)
+                                    .overlay(Circle().stroke(on ? Theme.lime : Theme.dim, lineWidth: 1.5))
+                                Text(verbatim: opt.label).font(.system(size: 16, weight: .medium)).foregroundStyle(.white)
+                                Spacer()
+                            }
+                            .padding(.horizontal, 10).padding(.vertical, 8)
+                            .background(RoundedRectangle(cornerRadius: 8).fill(Color.white.opacity(0.06)))
+                            .overlay(RoundedRectangle(cornerRadius: 8).stroke(Theme.lime, lineWidth: on ? 1.5 : 0))
+                        }.buttonStyle(.plain)
                     }
-                    .buttonStyle(.plain).disabled(selected == nil || ui == .sending)
                 }
-                Button { Task { await model.jump(session: session) } } label: {
-                    Pill(text: "Type in T3 Code", fill: Color.white.opacity(0.12), fg: .white)
-                }.buttonStyle(.plain)
+                if case .error(let msg) = ui {
+                    Text(verbatim: msg).font(.system(size: 12)).foregroundStyle(Theme.red).lineLimit(2)
+                }
+                if question.answerableInWidget || question.freeTextAnswerable {
+                    HStack(spacing: 8) {
+                        if question.answerableInWidget {
+                            Button { Task { await model.sendAnswer(threadId: session.threadId) } } label: {
+                                Pill(text: ui == .sending ? "Sending…" : "Send", fill: selected == nil ? Theme.dim : Theme.lime)
+                            }
+                            .buttonStyle(.plain).disabled(selected == nil || ui == .sending)
+                        }
+                        if question.freeTextAnswerable {
+                            Button { model.startWritingAnswer(question.requestId) } label: {
+                                Pill(text: "Write answer", fill: question.answerableInWidget ? Color.white.opacity(0.12) : Theme.lime,
+                                     fg: question.answerableInWidget ? .white : .black)
+                            }.buttonStyle(.plain)
+                        }
+                    }
+                } else {
+                    // Several questions or multi-select: T3 Code only. The row's ↗ opens it.
+                    Text(verbatim: "Answer this one in T3 Code: ↗ opens it.").font(.system(size: 12.5)).foregroundStyle(Theme.grey)
+                }
             }
         }
         .padding(12).frame(maxWidth: .infinity, alignment: .leading)
@@ -406,6 +436,12 @@ struct DetailView: View {
                     MaybeScroll {
                         VStack(alignment: .leading, spacing: 4) { ForEach(session.steps) { ExpandableStepRow(model: model, session: session, step: $0) } }
                     }
+                }
+                if model.canMessage(session) { MessageComposer(model: model, store: model.composer, session: session, pinned: true) }
+                if let note = model.rowToasts[session.threadId] {
+                    Text(verbatim: note).font(.system(size: 12.5, weight: .bold)).foregroundStyle(.black)
+                        .padding(.horizontal, 10).padding(.vertical, 4).background(Capsule().fill(Theme.lime))
+                        .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
             .padding(12).background(RoundedRectangle(cornerRadius: 14).fill(Theme.card))

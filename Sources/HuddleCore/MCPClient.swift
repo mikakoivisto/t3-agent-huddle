@@ -1,4 +1,8 @@
 import Foundation
+
+/// How a written message reaches a thread (spec 13): `queue` = a new turn after the current one (or now, if none runs);
+/// `steer` = into the running turn. T3's other modes (`auto`, `restart`) are deliberately not representable.
+public enum SendMode: String, Sendable, Equatable { case queue, steer }
 import os
 
 /// Refuse every redirect: a token must never follow a 3xx off the loopback server.
@@ -149,6 +153,20 @@ public final class MCPClient: @unchecked Sendable {
         var args = QuestionCodec.respondArguments(question: question, selection: selection).object ?? [:]
         if let environment { args["environmentId"] = .string(environment) }
         _ = try await callTool("t3_pending_request", .object(args))
+    }
+
+    /// A message the user wrote, to a thread (spec 13). The only `t3_thread_send` call in the app: `mode` is one of two cases,
+    /// so `restart`, `auto` and `freshContext` cannot be sent. `clientRequestId` lets T3 drop a repeat of the same message.
+    public func sendMessage(threadId: String, message: String, mode: SendMode, clientRequestId: String,
+                            environment: String? = nil) async throws {
+        _ = try await callTool("t3_thread_send", withEnv([
+            "threadId": .string(threadId), "message": .string(message), "mode": .string(mode.rawValue),
+            "clientRequestId": .string(clientRequestId)], environment))
+    }
+
+    /// The thread's status as T3 reports it now: one small read, used right before a steer.
+    public func threadStatus(threadId: String, environment: String? = nil) async throws -> T3Status {
+        try await readActivity(threadId: threadId, afterPosition: nil, limit: 1, maxChars: 40, environment: environment).status
     }
 
     /// The project's display name; a thread with no project (scratch) reports "No project".

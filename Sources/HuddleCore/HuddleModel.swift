@@ -95,7 +95,7 @@ public final class HuddleModel: ObservableObject {
     @Published public private(set) var armedCloseID: String?
     @Published public private(set) var toast: String?
     @Published public var selections: [String: String] = [:]          // requestId → option label
-    @Published public private(set) var questionStates: [String: QuestionUIState] = [:]
+    @Published public internal(set) var questionStates: [String: QuestionUIState] = [:]
     @Published public private(set) var readOnly = false
     /// Opt-in (default off): Allow / Deny on permission requests through T3's internal `/ws`. True only while the credential exists.
     @Published public internal(set) var inlineApprovals = false
@@ -123,7 +123,9 @@ public final class HuddleModel: ObservableObject {
     /// Steps the user opened or closed by hand; otherwise a running step is open and the rest are closed.
     @Published public private(set) var stepOpen: [String: Bool] = [:]   // key: threadId|stepId
     public var groups: [HuddleState.EnvGroup] { state.groups(environments: environments) }
-    private var toolNames: Set<String> = []
+    var toolNames: Set<String> = []
+    /// Argument names each tool advertises (`tools/list`), so an optional feature can check the arguments it needs.
+    var toolArguments: [String: Set<String>] = [:]
     private var lastEnvRefresh = Date.distantPast
     private var lastFinishedFetch = Date.distantPast
     private var envBoostUntil = Date.distantPast
@@ -135,6 +137,16 @@ public final class HuddleModel: ObservableObject {
     private var loop: Task<Void, Never>?
     private var lastList = Date.distantPast
     var justAnswered: [String: Date] = [:]
+    /// Drafts of written messages and answers, kept apart so typing does not re-render every row (spec 13).
+    public let composer = ComposerStore()
+    @Published public internal(set) var composingThreadId: String?
+    @Published public internal(set) var writingAnswerFor: String?
+    @Published public internal(set) var sendModes: [String: SendMode] = [:]
+    @Published public internal(set) var composeStates: [String: QuestionUIState] = [:]
+    @Published public internal(set) var composeNotices: [String: String] = [:]
+    @Published public internal(set) var rowToasts: [String: String] = [:]
+    var composeTargets: [String: String] = [:]
+    var pendingSends: [String: (fingerprint: String, id: String)] = [:]
     private var prefs: Preferences
 
     public init(config: HuddleConfig) {
@@ -194,6 +206,7 @@ public final class HuddleModel: ObservableObject {
         questionStates = questionStates.filter { liveRequests.contains($0.key) }
         selections = selections.filter { liveRequests.contains($0.key) }
         if projectNames.count > 300 { projectNames.removeAll(); projectLookups.removeAll() }
+        pruneComposeState(liveThreads: live, liveRequests: liveRequests)
     }
 
     private func refreshOnce(force: Bool) async {
@@ -390,6 +403,10 @@ public final class HuddleModel: ObservableObject {
         let tools = try await c.toolsList()
         if let reason = ContractCheck.verify(toolsList: tools) { throw HuddleError.unsupportedServer(reason) }
         toolNames = Set((tools["tools"].array ?? []).compactMap { $0["name"].string })
+        toolArguments = Dictionary((tools["tools"].array ?? []).compactMap { t -> (String, Set<String>)? in
+            guard let n = t["name"].string else { return nil }
+            return (n, Set((t["inputSchema"]["properties"].object ?? [:]).keys))
+        }, uniquingKeysWith: { a, _ in a })
         environments = []
         client = c
         return c
@@ -461,6 +478,30 @@ public final class HuddleModel: ObservableObject {
             connectNote = e.description
             if case .notRunning = e { state.connection = .notRunning }
         }
+    }
+
+    /// A token is stored. Read through the Keychain vault, which reads the item once per launch.
+    public var isSignedIn: Bool { config.tokenStore.load() != nil }
+
+    /// Menu → Sign Out of T3 Code (spec 08). Forgets the token on this Mac; T3 keeps the session until the user revokes it.
+    /// Returns false, changing nothing else, when the Keychain refuses the delete.
+    @discardableResult public func signOut() -> Bool {
+        cancelSignIn()
+        guard config.tokenStore.delete() else {
+            connectNote = "The Keychain would not let Agent Huddle remove its sign-in, so it is still signed in."
+            return false
+        }
+        client = nil
+        toolNames = []; toolArguments = [:]; environments = []
+        var fresh = HuddleState()
+        fresh.hiddenIDs = state.hiddenIDs
+        fresh.connection = .unauthorized
+        state = fresh
+        selectedThreadID = nil
+        composingThreadId = nil; writingAnswerFor = nil
+        consecutiveFailures = 0
+        connectNote = "Signed out. T3 still has the session: run `t3 auth session list`, then `t3 auth session revoke <id>` for Agent Huddle."
+        return true
     }
 
     // MARK: Linking other machines
@@ -551,8 +592,7 @@ public final class HuddleModel: ObservableObject {
             state.clearPending(threadId: threadId)
             await refresh(force: true)
         } catch {
-            let msg = (error as? HuddleError)?.description ?? error.localizedDescription
-            questionStates[q.requestId] = .error(String(msg.prefix(120)))
+            questionStates[q.requestId] = .error(Self.oneLine(error))
         }
     }
 

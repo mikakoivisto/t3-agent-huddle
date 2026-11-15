@@ -87,6 +87,13 @@ public final class FakeT3Server: @unchecked Sendable {
         public var environmentLabel = "Fake machine"
         /// The linked machines' addresses `peerLinks.list` returns (environment id → urls), like T3's `PeerLink.urls`.
         public var peerLinkURLs: [String: [String]] = [:]
+        /// `t3_thread_send` fails with a tool error (spec 13 failure path).
+        public var failSends = false
+        /// Live T3 (2026-11-15): a thread whose runtime mode is broader than the client's sign-in refuses sends and answers with
+        /// `runtime_mode_escalation_denied`. On here, every send and respond is refused that way.
+        public var modeEscalationDenied = false
+        /// Live T3 (2026-11-15): a send to a thread on a LINKED machine, through this Mac's MCP, is refused with `capability_denied`.
+        public var linkedSendDenied = false
         public init() {}
     }
 
@@ -95,6 +102,12 @@ public final class FakeT3Server: @unchecked Sendable {
     private var order: [String] = []
     private var _calls: [Call] = []
     private var _answers: [(requestId: String, answers: JSON)] = []
+    public struct Send: Sendable, Equatable { public var threadId: String; public var message: String; public var mode: String?
+        public var clientRequestId: String?; public var environmentId: String?; public var freshContext: Bool? }
+    private var _sends: [Send] = []
+    private var deliveredRequestIds: Set<String> = []
+    /// Messages T3 accepted (a repeat of a `clientRequestId` is dropped, as T3's own dedupe would).
+    public var sends: [Send] { lock.lock(); defer { lock.unlock() }; return _sends }
     private var _requestCount = 0
     private var issuedTokens: Set<String> = []
     private var linkedIds: Set<String>?
@@ -293,8 +306,9 @@ public final class FakeT3Server: @unchecked Sendable {
         "t3_environment_read": ["environmentId"],
         "t3_environment_links": [],
         "t3_environment_link": ["clientRequestId", "environmentId", "hint", "reason", "requestedAccess", "url"],
-        // Tools the huddle must never call in v1 (§7.2); present so a bug would be observable.
-        "t3_thread_send": ["threadId", "message"],
+        // Written messages (spec 13): T3's published arguments. The client may send only queue or steer.
+        "t3_thread_send": ["threadId", "message", "mode", "clientRequestId", "freshContext", "environmentId"],
+        // Tools the huddle must never call (§7.2); present so a bug would be observable.
         "t3_thread_launch": ["projectId", "prompt"],
         "t3_thread_interrupt": ["threadId"],
     ]
@@ -341,6 +355,30 @@ public final class FakeT3Server: @unchecked Sendable {
             case "t3_pending_request": payload = try pending(args, o)
             case "t3_project_read":
                 payload = ["project": ["projectId": args["projectId"], "title": .string(args["projectId"].string.flatMap { o.projectTitles[$0] } ?? "Demo project"), "path": "/tmp/fake-demo-project"]]
+            case "t3_thread_send":
+                guard !o.failSends else { throw FakeToolError("fake send failure") }
+                if o.linkedSendDenied, args["environmentId"].string != nil {
+                    throw FakeToolError(#"{"_tag":"OrchestratorMcpFailure","code":"capability_denied","message":"This work was started from T3 Code - Fake machine."}"#)
+                }
+                guard !o.modeEscalationDenied else { throw FakeToolError(#"{"_tag":"OrchestratorMcpFailure","code":"runtime_mode_escalation_denied","message":"Child runtime mode auto is broader than the caller's approval-required."}"#) }
+                guard let id = args["threadId"].string, let message = args["message"].string else { throw FakeToolError("threadId and message are required") }
+                lock.lock(); let status = threads[id]?.status; lock.unlock()
+                guard let status else { throw FakeToolError("thread not found") }
+                let mode = args["mode"].string
+                if mode == "steer" && status != "running" { throw FakeToolError("No active turn to steer.") }
+                let rid = args["clientRequestId"].string
+                lock.lock()
+                let repeated = rid.map { deliveredRequestIds.contains($0) } ?? false
+                if !repeated {
+                    if let rid { deliveredRequestIds.insert(rid) }
+                    _sends.append(Send(threadId: id, message: message, mode: mode, clientRequestId: rid,
+                                       environmentId: args["environmentId"].string, freshContext: args["freshContext"].bool))
+                }
+                lock.unlock()
+                if mode != "steer" && !["running", "waiting", "starting", "queued", "preparing"].contains(status) {
+                    update(id) { $0.status = "running"; $0.updatedAt = FakeT3Server.iso(Date()) }   // a new turn starts
+                }
+                payload = ["threadId": .string(id), "mode": .string(mode ?? "auto"), "accepted": true, "duplicate": .bool(repeated)]
             case "t3_thread_organize":
                 if args["action"].string == "settle", let id = args["threadId"].string { update(id) { $0.settled = true } }
                 payload = ["ok": true]
@@ -468,6 +506,7 @@ public final class FakeT3Server: @unchecked Sendable {
                 "multiSelect": .bool(q.multiSelect),
                 "options": .array(q.options.map { ["label": .string($0)] })]]]
         case "respond":
+            if o.modeEscalationDenied { throw FakeToolError(#"{"_tag":"OrchestratorMcpFailure","code":"runtime_mode_escalation_denied","message":"Child runtime mode auto is broader than the caller's approval-required."}"#) }
             guard let rid = args["requestId"].string else { throw FakeToolError("requestId required") }
             guard t.questions.contains(where: { $0.requestId == rid }) else {
                 throw FakeToolError("cannot approve a permission request; only user questions can be answered")

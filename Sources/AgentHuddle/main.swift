@@ -68,6 +68,7 @@ let options = parseArgs()
 @MainActor func run() {
     let app = NSApplication.shared
     app.setActivationPolicy(.accessory)
+    EditKeys.installMainMenu()
     if let icon = options.iconFile { AppIcon.writePNG(to: icon); exit(0) }
     let log = HuddleLog()
     let sound: @Sendable () -> Void = { NSSound(named: "Glass")?.play() }

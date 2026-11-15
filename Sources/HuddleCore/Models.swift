@@ -228,16 +228,18 @@ public struct Question: Equatable, Sendable {
     public var prompt: String
     public var options: [QuestionOption]
     public var multiSelect: Bool
-    /// False for anything v1 cannot answer (several questions, multi-select, free text).
-    /// Those fall back to "Type in T3 Code" (SPEC Q5).
+    /// False for anything the options cannot answer (several questions, multi-select, no options).
     public var answerableInWidget: Bool
+    /// A single, not multi-select question: it can be answered with text the user writes (spec 13), options or not.
+    public var freeTextAnswerable: Bool
 
     public init(requestId: String, threadId: String, questionId: String = "0", tag: String? = nil,
                 prompt: String, options: [QuestionOption], multiSelect: Bool = false,
-                answerableInWidget: Bool = true) {
+                answerableInWidget: Bool = true, freeTextAnswerable: Bool = false) {
         self.requestId = requestId; self.threadId = threadId; self.questionId = questionId
         self.tag = tag; self.prompt = prompt; self.options = options
         self.multiSelect = multiSelect; self.answerableInWidget = answerableInWidget
+        self.freeTextAnswerable = freeTextAnswerable
     }
 }
 
@@ -268,10 +270,10 @@ public enum QuestionCodec {
                         questionId: first["id"].string ?? "0",
                         tag: first["header"].string ?? first["tag"].string,
                         prompt: prompt, options: options, multiSelect: multi,
-                        answerableInWidget: simple)
+                        answerableInWidget: simple, freeTextAnswerable: qs.count <= 1 && !multi)
     }
 
-    /// Arguments for `respond`. Shape ASSUMED: `{requestId, answers: {<questionId>: <label>}}`.
+    /// Arguments for `respond`. Shape ASSUMED: `{requestId, answers: {<questionId>: <label or written text>}}`.
     public static func respondArguments(question q: Question, selection: String) -> JSON {
         ["action": "respond", "threadId": .string(q.threadId), "requestId": .string(q.requestId),
          "answers": .object([q.questionId: .string(selection)])]

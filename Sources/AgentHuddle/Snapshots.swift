@@ -182,6 +182,57 @@ enum Snapshots {
         approvalsWindow(model: cm, "21-inline-approvals-window-setup", data: DemoApprovalsData.overview(open: "studio"), dir)
         c.stop()
 
+        // E. Write and send (spec 13): written answers, the composer, queue / steer, the pop-out editor.
+        let e = await DemoRig.make(prefs: prefs.appendingPathComponent("e"))
+        DemoScenario.start(e.local); DemoScenario.addQuestion(e.local)
+        await e.refresh()
+        let em = e.model
+        save(ids: [DemoScenario.changelog], em, "34-question-write-answer", dir)
+        if let q = em.state.sessions[DemoScenario.changelog]?.question {
+            em.startWritingAnswer(q.requestId)
+            em.composer.drafts[ComposerStore.answerKey(q.requestId)] = "Friendly, but keep each entry to one line and skip the emoji."
+            save(ids: [DemoScenario.changelog], em, "35-question-writing-answer", dir)
+            em.stopWritingAnswer()
+        }
+        em.openComposer(DemoScenario.scripts)
+        em.composer.drafts[ComposerStore.messageKey(DemoScenario.scripts)] = "Skip lint.sh for now, it needs the old node. Do release.sh first."
+        save(ids: [DemoScenario.scripts], em, "36-message-running-queue", dir)
+        em.toggleSendMode(DemoScenario.scripts)
+        save(ids: [DemoScenario.scripts], em, "37-message-running-steer", dir)
+        await em.sendMessage(threadId: DemoScenario.scripts)
+        save(ids: [DemoScenario.scripts], em, "38-message-steered", dir)
+        e.local.update(DemoScenario.config) { $0.status = "completed" }
+        await e.refresh(2)
+        em.openComposer(DemoScenario.config)
+        em.composer.drafts[ComposerStore.messageKey(DemoScenario.config)] = "Now add a test for the missing-file case."
+        save(ids: [DemoScenario.config], em, "39-message-finished-send", dir)
+        em.closeComposer(DemoScenario.config)
+        // The run ended while the user typed a steer: nothing is sent, the composer says so.
+        em.openComposer(DemoScenario.docs)
+        em.composer.drafts[ComposerStore.messageKey(DemoScenario.docs)] = "Also link the new install page from the README."
+        em.toggleSendMode(DemoScenario.docs)
+        e.local.update(DemoScenario.docs) { $0.status = "completed" }
+        await em.sendMessage(threadId: DemoScenario.docs)
+        save(ids: [DemoScenario.docs], em, "40-message-run-finished", dir)
+        em.closeComposer(DemoScenario.docs)
+        em.composer.drafts[ComposerStore.messageKey(DemoScenario.render)] = "When the PDF is done, attach it to the release draft."
+        em.openDetail(DemoScenario.render); await e.refresh()
+        save(em, "41-detail-composer", dir)
+        em.back()
+        em.composer.drafts[ComposerStore.messageKey(DemoScenario.render)] = """
+        When you're done with the notes, run the full release dry run and post the output here.
+
+        If render-notes.js still calls the old node path, switch it to the one from .nvmrc, and don't touch the PDF step until we've upgraded the renderer, it breaks on the new config.
+
+        Also the changelog step should read RELEASES.md, not CHANGELOG.md, that file is gone since the last release.
+        """
+        write(ComposeEditorView(model: em, store: em.composer, threadId: DemoScenario.render, close: {})
+                .environment(\.snapshotMode, true).frame(width: 620, height: 440), "42-pop-out-editor", dir, scale: 2)
+        em.setReadOnly(true)
+        em.openComposer(DemoScenario.render)
+        save(ids: [DemoScenario.render], em, "43-message-read-only", dir)
+        e.stop()
+
         // D. Closing, the collapsed header, a jump that cannot be delivered, and T3 going away.
         let d = await DemoRig.make(prefs: prefs.appendingPathComponent("d"))
         DemoScenario.start(d.local); DemoScenario.addWaiters(d.local)
