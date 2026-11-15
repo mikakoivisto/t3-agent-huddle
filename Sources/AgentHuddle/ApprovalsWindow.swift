@@ -377,7 +377,7 @@ struct ApprovalsView: View {
 
     private func turnOffThisMac() {
         guard model.disableInlineApprovals() else {
-            farewell["this"] = "The Keychain would not let Agent Huddle remove the login, so inline approvals are still on. Remove “app.t3huddle.AgentHuddle / approvals-bearer” in Keychain Access."
+            farewell["this"] = "The Keychain would not let Agent Huddle remove the login, so inline approvals are still on. Try again, or remove the “app.t3huddle.AgentHuddle / vault” item in Keychain Access (that also signs Agent Huddle out)."
             return
         }
         farewell["this"] = "Login removed from this Mac’s Keychain. T3 doesn’t let Agent Huddle revoke its own session, so run `t3 auth session list`, then `t3 auth session revoke <id>` for the one labelled “Agent Huddle approvals”."
@@ -398,7 +398,7 @@ struct ApprovalsView: View {
 
     private func turnOff(_ m: ApprovalsSnapshotData.Machine) {
         guard model.disableRemoteApprovals(environmentId: m.id) else {
-            farewell[m.id] = "The Keychain would not let Agent Huddle remove \(m.name)’s login, so it is still saved. Remove the “approvals-remote-…” item for it in Keychain Access."
+            farewell[m.id] = "The Keychain would not let Agent Huddle remove \(m.name)’s login, so it is still saved. Try again, or remove the “app.t3huddle.AgentHuddle / vault” item in Keychain Access (that also signs Agent Huddle out)."
             return
         }
         farewell[m.id] = "Login removed from this Mac’s Keychain. Also revoke the session on \(m.name): run `t3 auth session list` there, then `t3 auth session revoke <id>` for the one labelled “Agent Huddle approvals”."

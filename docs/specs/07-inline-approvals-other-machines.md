@@ -26,7 +26,7 @@ Menu-bar item **Inline approvals…** opens one window (540 pt wide, resizable i
 | **Off** | Off (grey) | "N address(es) found · not set up", or "address not found · type it when you set up" | Set up… |
 | **Needs re-pair** | amber | "T3 refused the saved login. Pair again." | Set up… |
 
-A machine is **On** while its Keychain item exists. **Needs re-pair** is set when T3 rejected the saved login and clears on a successful setup. Needs re-pair is held in memory only: after a restart the machine shows Off.
+A machine is **On** while its credential exists in the vault. **Needs re-pair** is set when T3 rejected the saved login and clears on a successful setup. Needs re-pair is held in memory only: after a restart the machine shows Off.
 
 ### Setup, per machine (the row's **Set up…**)
 
@@ -45,7 +45,7 @@ A machine is **On** while its Keychain item exists. **Needs re-pair** is set whe
    2. The address passes the origin policy.
    3. **Identity check first** (nothing secret is sent).
    4. Then the single-use code is exchanged at that origin's `/oauth/token` with the same form as spec 06.
-   5. The result is saved as one Keychain item (below).
+   5. The result is saved in the Keychain vault (below).
 
 The pairing code and the typed address are never logged.
 
@@ -61,7 +61,7 @@ The pairing code and the typed address are never logged.
 
 ### Credential storage
 
-One Keychain item per machine: service `app.t3huddle.AgentHuddle`, account `approvals-remote-<percent-encoded environment id>`, JSON `{environmentId, origin, token}`, accessible when unlocked, this device only. The origin travels with the token in that one item, so the token can never be paired with another host. Separate from `bearer` (MCP) and `approvals-bearer` (spec 06).
+Each machine's credential is `{environmentId, origin, token}` inside the app's one Keychain item (service `app.t3huddle.AgentHuddle`, account `vault`, accessible when unlocked, this device only), keyed by environment id. The origin travels with the token in that record, so the token can never be paired with another host. Earlier versions kept one item per machine (`approvals-remote-<percent-encoded environment id>`); the first launch with the vault migrates and deletes them.
 
 ### Origin policy (`RemoteOriginPolicy.production`)
 
@@ -103,7 +103,7 @@ Same rules as spec 06 (explicit click, no default button, never in Read-only mod
 
 ### Turn off
 
-**Turn off** on a machine's row deletes its Keychain item. The window says to revoke the session on **that machine** (`t3 auth session list`, then `t3 auth session revoke <id>` for "Agent Huddle approvals").
+**Turn off** on a machine's row removes its credential from the vault. The window says to revoke the session on **that machine** (`t3 auth session list`, then `t3 auth session revoke <id>` for "Agent Huddle approvals").
 
 ## T3 data and tools
 
@@ -138,7 +138,7 @@ Every item is an AGENTS.md hard rule and is enforced by a test:
 | RMT-02 | The fixture policy allows plain http only to a loopback literal; an origin normalises and derives `wss` only | `theFixturePolicyAllowsOnlyPlainHTTPToALoopbackLiteral`; `aValidatedOriginIsNormalizedAndDerivesWssOnly` | Fake (pure) |
 | RMT-03 | Discovery picks the first address the policy accepts; all accepted ones are offered | `discoveryPicksTheFirstAddressThePolicyAccepts`; `discoveryReadsLinkedMachineAddressesWithAThrowawayReadOnlySession` | Fake; `peerLinks.list` Live |
 | RMT-04 | The local path stays strictly loopback | `theLocalPathStaysStrictlyLoopback` | Fake |
-| RMT-05 | Keychain accounts are separate per machine and from the other credentials; the account prefix round-trips environment ids | `keychainAccountsAreSeparatePerMachineAndFromTheOtherCredentials`; `theKeychainAccountPrefixRoundTripsEnvironmentIds` | Fake (account names only; no Keychain round trip) |
+| RMT-05 | The legacy per-machine account names (read only by the migration into the vault) are distinct per machine and from the other credentials, and round-trip environment ids | `keychainAccountsAreSeparatePerMachineAndFromTheOtherCredentials`; `theKeychainAccountPrefixRoundTripsEnvironmentIds` | Fake (account names only; no Keychain round trip) |
 | RMT-06 | The descriptor is fetched with no credentials and must match the linked environment; a non-T3 answer is refused | `theDescriptorIsFetchedWithoutCredentialsAndMustMatchTheLinkedEnvironment`; `anAddressThatDoesNotAnswerLikeT3IsRefused` | Fake; descriptor Live |
 | RMT-07 | A redirect on the descriptor, the token exchange and the `/ws` upgrade is not followed and the credential goes nowhere else | `aRedirectOnTheDescriptorIsNotFollowed`; `aRedirectOnTheTokenExchangeIsNotFollowedAndTheCodeGoesNowhereElse`; `aRedirectOnTheWebSocketUpgradeIsNotFollowedAndTheBearerGoesNowhereElse` | Fake |
 | RMT-08 | Off by default: nothing is sent to another machine | `offByDefaultNothingIsSentToAnotherMachine` | Fake |
@@ -157,7 +157,7 @@ Every item is an AGENTS.md hard rule and is enforced by a test:
 | RMT-21 | Window states go Off, On, Needs re-pair; addresses are offered saved-first without repeats; each is checked against the linked machine (this machine, other machine, unreachable, invalid) | `ApprovalsWindowStateTests.aMachineIsOffThenOnThenNeedsRepairAfterTheLoginIsRefused`; `ApprovalsWindowStateTests.addressCandidatesListTheSavedOneFirstThenTheDiscoveredOnesWithoutRepeats`; `ApprovalsWindowStateTests.eachAddressIsCheckedAgainstTheMachineYouLinked` | Fake |
 | RMT-22 | Source scans: system certificate trust only; fixture policy not in production wiring; remote connections only through the verified origin types; remote files never name the decision command | `certificateValidationIsTheSystemDefaultEverywhere`; `theLoopbackFixturePolicyIsNotReachableFromTheProductionWiring`; `remoteConnectionsAreBuiltOnlyThroughTheVerifiedOriginTypes`; `remoteFilesNeverNameTheDecisionCommand` | Fake (static) |
 | RMT-23 | A real decision to a separate machine over Tailscale, a live decline, and a revoked real credential | none | **None** |
-| RMT-24 | The window's layout, the Keychain store, the built `.app` against an https host | none | **None** |
+| RMT-24 | The window's layout, the built `.app` against an https host | none | **None** |
 
 ## Open questions
 

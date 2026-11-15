@@ -9,7 +9,7 @@ Needs a Mac with **Apple silicon** (the build is arm64 only) and macOS 14 or lat
 3. The menu-bar item appears (no Dock icon). **Connect to T3 Code** in the panel starts the sign-in below.
 4. To start it at login, add it under System Settings → General → Login Items yourself.
 
-Each rebuild changes the ad-hoc signature, so macOS may ask for your Keychain password again after an update.
+Each rebuild changes the ad-hoc signature, so macOS may ask for your Keychain password again after an update. Everything the app stores sits in **one** Keychain item (`app.t3huddle.AgentHuddle` / `vault`), so that is one prompt per new build. The first launch of a version that has the vault copies the older separate items into it and deletes them; if you decline one of those prompts, that item stays where it is and is tried again on the next launch.
 
 ## Connect to T3 Code
 

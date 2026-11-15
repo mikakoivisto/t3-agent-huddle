@@ -126,9 +126,10 @@ let options = parseArgs()
                               preferences: PreferencesStore(directory: options.prefsDir ?? tempPrefs), log: log,
                               jumper: RecordingJumper(log: log), playSound: demoSound)
     } else {
+        let vault = KeychainVault()           // one Keychain item for every secret: one prompt per new build, not several
         config = HuddleConfig(source: .runtimeFile(Discovery(runtimeFile: options.runtimeFile ?? Discovery.defaultRuntimeFile)),
-                              tokenStore: KeychainTokenStore(), approvalStore: KeychainTokenStore(account: "approvals-bearer"),
-                              remoteApprovalStore: KeychainRemoteCredentialStore(),
+                              tokenStore: KeychainTokenStore(vault: vault, slot: .bearer), approvalStore: KeychainTokenStore(vault: vault, slot: .approvals),
+                              remoteApprovalStore: KeychainRemoteCredentialStore(vault: vault),
                               peerVerifier: BundlePeerVerifier(),
                               preferences: PreferencesStore(directory: options.prefsDir ?? PreferencesStore.defaultDirectory),
                               log: log, jumper: T3Jumper(), playSound: sound,

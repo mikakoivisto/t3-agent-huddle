@@ -37,7 +37,7 @@
 
 ### Token storage and lifetime
 
-- **Keychain:** service `app.t3huddle.AgentHuddle`, account `bearer`, accessible when unlocked, this device only. Never a file, log line, argv or `UserDefaults`; there is no `--token` flag.
+- **Keychain:** service `app.t3huddle.AgentHuddle`, account `vault` (the `bearer` field; formerly its own item `bearer`, migrated on first launch), accessible when unlocked, this device only. Never a file, log line, argv or `UserDefaults`; there is no `--token` flag.
 - **Paste fallback:** "or paste a token" saves a pasted token to the Keychain. A token from `t3 auth session issue` is **rejected** by real T3 (401 on `/mcp`), so this is a fallback only.
 - **On HTTP 401 or 403** from any call: the token is deleted, the state becomes "Connect to T3 Code", and a red note says T3 rejected the token (HTTP 401) and why a CLI token may not work.
 - **Revoke:** `t3 auth session list` and `t3 auth session revoke <id>`.
@@ -128,7 +128,7 @@ A menu toggle (spec 10), persisted. It blocks **Send** (spec 04), inline Allow a
 | CON-17 | The token never appears in logs, including on 401 and errors; bearer patterns are scrubbed | `SecurityTests.tokenNeverAppearsInLogsEvenOn401AndErrors`; `logScrubberRedactsBearerPatterns` | Fake |
 | CON-18 | The app accepts no token on the command line | `SecurityTests.appBinaryDoesNotAcceptATokenOnTheCommandLine` | Fake (static scan) |
 | CON-19 | Read-only mode blocks Send, Allow and Deny | `ModelTests.readOnlyModeBlocksSend`; `ApprovalTests.readOnlyModeBlocksDecisions`; `RemoteApprovalTests.readOnlyModeBlocksARemoteDecision` | Fake |
-| CON-20 | Keychain save, load and delete of `bearer` | none (`SecurityTests.keychainStoreRoundTripIsSeparatedFromTests` tests the memory store) | **None** |
+| CON-20 | Keychain save, load and delete of the `bearer` field | `KeychainVaultTests` (memory); once by hand against the real Keychain | **Partial** |
 | CON-21 | The sign-in button, the Cancel button and the browser approval page | none | **None** |
 | CON-22 | The real peer check on a live T3 process | none | **None** (README: "unproven against your real install") |
 

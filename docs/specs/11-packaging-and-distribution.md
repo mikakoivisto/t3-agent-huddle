@@ -64,7 +64,7 @@ It installs nothing and writes no login item.
 |---|---|---|
 | First launch of a downloaded zip | Gatekeeper refuses an unsigned or un-notarized app; right-click → Open once (README) | Documented; not observed here |
 | No Dock icon | The app is reachable only from the menu bar | Code |
-| macOS Keychain prompts | Each Keychain item (`bearer`, `approvals-bearer`, `approvals-remote-<id>`) may prompt for access, and an ad-hoc signature changes with every build, so a new build is likely to prompt again | **Inference**; never observed (the Keychain store has no test) |
+| macOS Keychain prompts | An ad-hoc signature changes with every build, so a new build prompts again for Keychain access. All secrets are in one item (`vault`), so it is one prompt rather than one per credential. A Developer ID signature would stop the repeats | Observed by the maintainer (several prompts per new build before the vault); the vault itself is tested against memory |
 | Peer check | A wrong "Listener on the T3 port is not T3 Code" if the pid-to-bundle check misjudges a real install | Unproven (spec 08) |
 | Sandbox | The app is not sandboxed; App Sandbox untried | README Limitations |
 | Start at login | Not provided; add the binary under System Settings → General → Login Items by hand | README |
@@ -88,7 +88,7 @@ None.
 
 | ID | Statement | Tests | Evidence |
 |---|---|---|---|
-| PKG-01 | The package builds, and its tests pass with no real T3 and no `~/.t3` access | `swift test` (224 tests in 20 suites) | **Run for this review** before the history cleanup: all passed in about 1 s. Not run by CI |
+| PKG-01 | The package builds, and its tests pass with no real T3 and no `~/.t3` access | `swift test` (235 tests in 20 suites) | **Run for this review** before the history cleanup: all passed in about 1 s. Not run by CI |
 | PKG-02 | `scripts/build-app.sh` produces `dist/Agent Huddle.app` and `dist/AgentHuddle.zip` with the bundle id, version, `LSUIElement`, icon, licence, ad-hoc signature | none | **None** in this review (the script writes to `assets/`, outside the allowed paths) |
 | PKG-03 | The app does not read the Keychain or `~/.t3` in `--fixture` mode | `SecurityTests.sourcesTouchHomeT3OnlyForTheRuntimeFileAndNeverOpenSQLite` (static); `main.swift` wiring | Fake (static) |
 | PKG-04 | The release version comes from the tag | none | **None** |
@@ -102,7 +102,7 @@ None.
 - **PKG-Q3:** `CFBundleVersion` is fixed at `1`; Sparkle-style updates or notarization would need it to grow.
 - **PKG-Q4:** the shipped binary includes `FakeT3` and `Scenario` code and its launch modes. Split the app target to drop them?
 - **PKG-Q5:** `AppIcon.swift:3` says "four buddies"; the code draws one (`BuddyView(index: 0, …)`).
-- **PKG-Q6:** do repeated Keychain prompts happen on rebuilt ad-hoc builds? Observe once.
+- **PKG-Q6:** with the single vault item, is one prompt per new ad-hoc build what users see? Observe once more.
 
 ## Sources
 

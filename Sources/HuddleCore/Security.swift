@@ -119,7 +119,7 @@ public final class HuddleLog: @unchecked Sendable {
     }
 }
 
-/// Token storage. The real implementation is the Keychain (SPEC §7.1); tests use memory.
+/// Token storage. The real implementation is `KeychainTokenStore` over the one-item `KeychainVault`; tests use memory.
 public protocol TokenStore: Sendable {
     func load() -> String?
     func save(_ token: String) throws
@@ -134,45 +134,6 @@ public final class MemoryTokenStore: TokenStore, @unchecked Sendable {
     public func load() -> String? { lock.lock(); defer { lock.unlock() }; return token }
     public func save(_ token: String) throws { lock.lock(); self.token = token; lock.unlock() }
     @discardableResult public func delete() -> Bool { lock.lock(); token = nil; lock.unlock(); return true }
-}
-
-public final class KeychainTokenStore: TokenStore, @unchecked Sendable {
-    private let service: String
-    private let account: String
-    /// `account` separates credentials: the MCP token is `bearer`; the opt-in approvals token is `approvals-bearer`.
-    public init(service: String = "app.t3huddle.AgentHuddle", account: String = "bearer") { self.service = service; self.account = account }
-
-    private var base: [String: Any] {
-        [kSecClass as String: kSecClassGenericPassword,
-         kSecAttrService as String: service,
-         kSecAttrAccount as String: account]
-    }
-    public func load() -> String? {
-        var q = base
-        q[kSecReturnData as String] = true
-        q[kSecMatchLimit as String] = kSecMatchLimitOne
-        var out: CFTypeRef?
-        guard SecItemCopyMatching(q as CFDictionary, &out) == errSecSuccess, let d = out as? Data else { return nil }
-        return String(data: d, encoding: .utf8)
-    }
-    /// Updates an existing item in place (the old credential is never deleted before the new one is stored) or adds a new one.
-    public func save(_ token: String) throws {
-        let attrs: [String: Any] = [kSecValueData as String: Data(token.utf8),
-                                    kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly]
-        var status = SecItemUpdate(base as CFDictionary, attrs as CFDictionary)
-        if status == errSecItemNotFound {
-            var q = base
-            for (k, v) in attrs { q[k] = v }
-            status = SecItemAdd(q as CFDictionary, nil)
-        }
-        guard status == errSecSuccess else {
-            throw HuddleError.toolFailed("Keychain save failed (\(status))")
-        }
-    }
-    @discardableResult public func delete() -> Bool {
-        let status = SecItemDelete(base as CFDictionary)
-        return status == errSecSuccess || status == errSecItemNotFound
-    }
 }
 
 /// Contract drift (SPEC §11): the tools in §7.2 must still exist with the arguments we pass.

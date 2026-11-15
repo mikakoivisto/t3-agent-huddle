@@ -1,7 +1,7 @@
 import Foundation
 
 /// What is kept for one other machine: the bearer session, the machine it belongs to and the one origin it may be sent to.
-/// They live in one Keychain item, so the credential can never be paired with a different host.
+/// They are stored together, so the credential can never be paired with a different host.
 public struct RemoteApprovalCredential: Codable, Equatable, Sendable {
     public var environmentId: String
     public var origin: String
@@ -29,38 +29,27 @@ public final class MemoryRemoteCredentialStore: RemoteCredentialStore, @unchecke
     public func environmentIds() -> [String] { lock.lock(); defer { lock.unlock() }; return items.keys.sorted() }
 }
 
-/// Keychain account `approvals-remote-<environment id>`; the item holds the JSON of the credential.
+/// The per-machine credentials, as a view of the one-item `KeychainVault`.
 public final class KeychainRemoteCredentialStore: RemoteCredentialStore, @unchecked Sendable {
-    private let service: String
-    public init(service: String = "app.t3huddle.AgentHuddle") { self.service = service }
+    private let vault: KeychainVault
+    public init(vault: KeychainVault) { self.vault = vault }
 
+    /// The account name earlier versions used for one machine's own Keychain item (`approvals-remote-<percent-encoded id>`).
+    /// Only the one-time migration into the vault reads such items now.
     static func account(for environmentId: String) -> String {
         var allowed = CharacterSet.asciiAlphanumerics; allowed.insert(charactersIn: "-_.")
-        return "approvals-remote-" + (environmentId.addingPercentEncoding(withAllowedCharacters: allowed) ?? environmentId)
+        return KeychainVault.legacyRemotePrefix + (environmentId.addingPercentEncoding(withAllowedCharacters: allowed) ?? environmentId)
     }
-    private func store(_ id: String) -> KeychainTokenStore { KeychainTokenStore(service: service, account: Self.account(for: id)) }
 
     public func load(environmentId: String) -> RemoteApprovalCredential? {
-        guard let text = store(environmentId).load(), let c = try? JSONDecoder().decode(RemoteApprovalCredential.self, from: Data(text.utf8)),
-              c.environmentId == environmentId else { return nil }
+        guard let c = vault.read({ $0.remote[environmentId] }), c.environmentId == environmentId else { return nil }
         return c
     }
-    public func save(_ c: RemoteApprovalCredential) throws {
-        guard let data = try? JSONEncoder().encode(c), let text = String(data: data, encoding: .utf8) else { throw HuddleError.toolFailed("Could not encode the credential") }
-        try store(c.environmentId).save(text)
+    public func save(_ c: RemoteApprovalCredential) throws { try vault.mutate { $0.remote[c.environmentId] = c } }
+    @discardableResult public func delete(environmentId: String) -> Bool {
+        do { try vault.mutate { $0.remote[environmentId] = nil }; return true } catch { return false }
     }
-    @discardableResult public func delete(environmentId: String) -> Bool { store(environmentId).delete() }
-
-    /// Attributes only (no secret data is read, so no prompt): the accounts of this service that start with the prefix.
-    public func environmentIds() -> [String] {
-        let q: [String: Any] = [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service,
-                                kSecReturnAttributes as String: true, kSecMatchLimit as String: kSecMatchLimitAll]
-        var out: CFTypeRef?
-        guard SecItemCopyMatching(q as CFDictionary, &out) == errSecSuccess, let rows = out as? [[String: Any]] else { return [] }
-        let prefix = "approvals-remote-"
-        return rows.compactMap { ($0[kSecAttrAccount as String] as? String) }.filter { $0.hasPrefix(prefix) }
-            .compactMap { String($0.dropFirst(prefix.count)).removingPercentEncoding }.sorted()
-    }
+    public func environmentIds() -> [String] { vault.read { $0.remote.keys.sorted() } }
 }
 
 /// Opt-in setup of inline approvals for another machine: a pairing code created ON THAT MACHINE becomes a bearer session there.

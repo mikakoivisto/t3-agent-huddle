@@ -32,10 +32,10 @@ T3's MCP surface cannot decide an approval (`t3_pending_request` handles user qu
    | `client_label` | `Agent Huddle approvals` |
 
 4. The response is accepted only if the granted scopes include `orchestration:operate` and contain nothing beyond the two requested. Otherwise nothing is saved and the user sees why (for example the HTTP status and T3's code, or "granted more than requested … revoke the session").
-5. The session token is stored in the Keychain, service `app.t3huddle.AgentHuddle`, account `approvals-bearer`, accessible when unlocked, this device only. The pairing code is single use and is not stored.
+5. The session token is stored in the Keychain vault (service `app.t3huddle.AgentHuddle`, account `vault`, `approvals` field; formerly its own item `approvals-bearer`, migrated on first launch), accessible when unlocked, this device only. The pairing code is single use and is not stored.
 6. The window shows a warning: the login could also send messages to, launch and interrupt threads; the app only uses it to answer approvals.
 
-**State:** inline approvals are **on** exactly while that Keychain item exists (read at launch and after changes).
+**State:** inline approvals are **on** exactly while that credential exists (read at launch and after changes).
 
 ### What the panel shows
 
@@ -89,7 +89,7 @@ All guards run in order; any failure stops and sends nothing:
 
 ### Turning off
 
-**Turn off** on the "This Mac" row deletes the Keychain item at once. T3 does not let a client revoke its own session, so the window says to run `t3 auth session list` then `t3 auth session revoke <id>` for the session labelled "Agent Huddle approvals", or remove it in T3 Code Settings → Connections. The token stays valid in T3 for about 30 days (`expires_in` 2591999) until then.
+**Turn off** on the "This Mac" row removes the credential from the vault at once. T3 does not let a client revoke its own session, so the window says to run `t3 auth session list` then `t3 auth session revoke <id>` for the session labelled "Agent Huddle approvals", or remove it in T3 Code Settings → Connections. The token stays valid in T3 for about 30 days (`expires_in` 2591999) until then.
 
 ## T3 data and tools
 
@@ -107,7 +107,7 @@ All guards run in order; any failure stops and sends nothing:
 
 ## Security and privacy
 
-- **Credential:** its own Keychain account, never in argv, logs, preferences or the repository; `HuddleLog` scrubs it.
+- **Credential:** its own field in the Keychain vault, never in argv, logs, preferences or the repository; `HuddleLog` scrubs it.
 - **Broader than the MCP token:** stated in the README and in the setup window; the app requests only `orchestration:read` and `orchestration:operate` even if the code carries more.
 - **One command only:** enforced by a source scan on `ApprovalSocket.swift` (one RPC tag, one command type, one frame builder, one `.send(`; the words `acceptForSession`, `acceptAlways`, `"cancel"`, `feedback`, `answers`, `subscribe` are absent) and by a test of every frame the client can build.
 - **Loopback guard:** the socket is built through `LoopbackGuard`; a non-loopback origin is refused. Remote machines use a different, verified path (spec 07).
@@ -141,7 +141,7 @@ All guards run in order; any failure stops and sends nothing:
 | AMC-19 | The socket refuses non-loopback origins; the protocol version is part of the upgrade URL | `ApprovalTests.theSocketRefusesNonLoopbackOrigins`; `ApprovalTests.protocolVersionIsPartOfTheUpgradeURL` | Fake |
 | AMC-20 | The MCP client's tool set is unchanged while deciding; the fake exposes no approval tool | `ApprovalTests.theMCPClientStillNeverCallsForbiddenTools`; `ApprovalTests.theFakeKeepsTheMCPSurfaceUnchanged` | Fake |
 | AMC-21 | A real accept and decline through the app's loopback `ws://` route | none | **None** (Node spike and the https `ApprovalSocket(remote:)` path ran live; the loopback `ApprovalSocket(origin:)` path never did) |
-| AMC-22 | Keychain round trip of `approvals-bearer`, and the setup and turn-off windows | none | **None** (tests use memory; windows never opened) |
+| AMC-22 | The vault round trip against the real Keychain (checked once by hand), and the setup and turn-off windows | `KeychainVaultTests` (memory) | **Partial** (tests use memory; windows never opened) |
 
 ## Open questions
 
