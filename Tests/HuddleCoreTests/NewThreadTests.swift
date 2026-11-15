@@ -16,12 +16,18 @@ struct NewThreadTests {
         return (s, m)
     }
 
-    func settle() async { try? await Task.sleep(nanoseconds: 150_000_000) }
+    /// Waits until the open composer's machine has its project and model lists (loaded in the background), at most 5 s.
+    func settle(_ m: HuddleModel) async {
+        for _ in 0..<100 {
+            if let id = m.newThreadMachine, m.projectsByMachine[id] != nil, m.capabilitiesByMachine[id] != nil { return }
+            try? await Task.sleep(nanoseconds: 50_000_000)
+        }
+    }
 
     @Test func startingOnThisMacSendsOneLaunchWithTheChosenProject() async throws {
         let (s, m) = try await setUp(); defer { s.stop() }
         #expect(m.canStartThreads)
-        m.openNewThread(); await settle()
+        m.openNewThread(); await settle(m)
         #expect(m.newThreadOpen && m.newThreadMachine != nil)
         #expect(m.newThreadProject == "proj_demo", "the project with threads in the list comes first")
         m.composer.drafts[HuddleModel.newThreadKey] = "Add a CHANGELOG entry for 2.4\nfrom the merged PRs."
@@ -42,7 +48,7 @@ struct NewThreadTests {
 
     @Test func optionsReachT3() async throws {
         let (s, m) = try await setUp(); defer { s.stop() }
-        m.openNewThread(); await settle()
+        m.openNewThread(); await settle(m)
         m.newThreadModel = ModelChoice(instanceId: "codex", model: "gpt-6.1-sol", label: "gpt-6.1-sol")
         m.newThreadMode = .approvalRequired; m.newThreadWorkspace = .worktree; m.newThreadPlan = true; m.newThreadTitle = "Changelog 2.4"
         m.composer.drafts[HuddleModel.newThreadKey] = "do it"
@@ -56,7 +62,7 @@ struct NewThreadTests {
     @Test func scratchHasNoProject() async throws {
         let (s, m) = try await setUp(); defer { s.stop() }
         var d = m.newThreadDefaults; d.scratch = true; m.setNewThreadDefaults(d)
-        m.openNewThread(); await settle()
+        m.openNewThread(); await settle(m)
         #expect(m.newThreadProject == nil)
         m.composer.drafts[HuddleModel.newThreadKey] = "try something"
         await m.startNewThread()
@@ -66,7 +72,7 @@ struct NewThreadTests {
 
     @Test func aRepeatedStartIsOneThread() async throws {
         let (s, m) = try await setUp(); defer { s.stop() }
-        m.openNewThread(); await settle()
+        m.openNewThread(); await settle(m)
         m.composer.drafts[HuddleModel.newThreadKey] = "once"
         async let a: Void = m.startNewThread()
         async let b: Void = m.startNewThread()
@@ -76,7 +82,7 @@ struct NewThreadTests {
 
     @Test func readOnlyStartsNothing() async throws {
         let (s, m) = try await setUp(); defer { s.stop() }
-        m.openNewThread(); await settle()
+        m.openNewThread(); await settle(m)
         m.composer.drafts[HuddleModel.newThreadKey] = "nope"
         m.setReadOnly(true)
         #expect(!m.canStartThreads)
@@ -91,7 +97,7 @@ struct NewThreadTests {
 
     @Test func aRefusalStaysInTheComposerInPlainWords() async throws {
         let (s, m) = try await setUp { $0.modeEscalationDenied = true }; defer { s.stop() }
-        m.openNewThread(); await settle()
+        m.openNewThread(); await settle(m)
         m.composer.drafts[HuddleModel.newThreadKey] = "keep me"
         await m.startNewThread()
         #expect(m.newThreadState == .error(HuddleModel.modeDeniedMessage))
@@ -100,7 +106,7 @@ struct NewThreadTests {
 
     @Test func modelsComeFromTheCatalogAndLimitTheModes() async throws {
         let (s, m) = try await setUp(); defer { s.stop() }
-        m.openNewThread(); await settle()
+        m.openNewThread(); await settle(m)
         let machine = try #require(m.newThreadMachine)
         let providers = try #require(m.capabilitiesByMachine[machine])
         #expect(providers.map(\.instanceId) == ["claudeAgent", "codex", "pi"], "disabled providers are left out")
@@ -122,7 +128,7 @@ struct NewThreadTests {
                                                  remotePolicy: .loopbackFixture, machineStore: store, log: HuddleLog(sink: { _ in })))
         await m.refresh()
         #expect(m.launchMachines.contains(where: { $0.id == "env_remote" }))
-        m.openNewThread(); m.selectNewThreadMachine("env_remote"); await settle()
+        m.openNewThread(); m.selectNewThreadMachine("env_remote"); await settle(m)
         m.composer.drafts[HuddleModel.newThreadKey] = "on the studio"
         await m.startNewThread()
         #expect(two.remote.launches.count == 1 && two.local.launches.isEmpty, "started on that machine's own T3")
