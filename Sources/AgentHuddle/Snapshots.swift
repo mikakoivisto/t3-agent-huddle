@@ -194,27 +194,30 @@ enum Snapshots {
             save(ids: [DemoScenario.changelog], em, "35-question-writing-answer", dir)
             em.stopWritingAnswer()
         }
-        em.openComposer(DemoScenario.scripts)
-        em.composer.drafts[ComposerStore.messageKey(DemoScenario.scripts)] = "Skip lint.sh for now, it needs the old node. Do release.sh first."
-        save(ids: [DemoScenario.scripts], em, "36-message-running-queue", dir)
-        em.toggleSendMode(DemoScenario.scripts)
-        save(ids: [DemoScenario.scripts], em, "37-message-running-steer", dir)
-        await em.sendMessage(threadId: DemoScenario.scripts)
-        save(ids: [DemoScenario.scripts], em, "38-message-steered", dir)
-        e.local.update(DemoScenario.config) { $0.status = "completed" }
-        await e.refresh(2)
-        em.openComposer(DemoScenario.config)
-        em.composer.drafts[ComposerStore.messageKey(DemoScenario.config)] = "Now add a test for the missing-file case."
-        save(ids: [DemoScenario.config], em, "39-message-finished-send", dir)
-        em.closeComposer(DemoScenario.config)
-        // The run ended while the user typed a steer: nothing is sent, the composer says so.
+        // This Mac's threads: a linked machine's rows have no composer (spec 13, capability_denied).
         em.openComposer(DemoScenario.docs)
-        em.composer.drafts[ComposerStore.messageKey(DemoScenario.docs)] = "Also link the new install page from the README."
+        em.composer.drafts[ComposerStore.messageKey(DemoScenario.docs)] = "Skip the API pages for now. Do the install guide first."
+        save(ids: [DemoScenario.docs], em, "36-message-running-queue", dir)
         em.toggleSendMode(DemoScenario.docs)
-        e.local.update(DemoScenario.docs) { $0.status = "completed" }
+        save(ids: [DemoScenario.docs], em, "37-message-running-steer", dir)
         await em.sendMessage(threadId: DemoScenario.docs)
-        save(ids: [DemoScenario.docs], em, "40-message-run-finished", dir)
+        save(ids: [DemoScenario.docs], em, "38-message-steered", dir)
+        e.local.update(DemoScenario.docs) { $0.status = "completed" }
+        await e.refresh(2)
+        em.openComposer(DemoScenario.docs)
+        em.composer.drafts[ComposerStore.messageKey(DemoScenario.docs)] = "Now link the new install page from the README."
+        save(ids: [DemoScenario.docs], em, "39-message-finished-send", dir)
         em.closeComposer(DemoScenario.docs)
+        // The run ended while the user typed a steer: nothing is sent, the composer says so.
+        em.openComposer(DemoScenario.render)
+        em.composer.drafts[ComposerStore.messageKey(DemoScenario.render)] = "Attach the PDF to the release draft when it is done."
+        em.toggleSendMode(DemoScenario.render)
+        e.local.update(DemoScenario.render) { $0.status = "completed" }
+        await em.sendMessage(threadId: DemoScenario.render)
+        save(ids: [DemoScenario.render], em, "40-message-run-finished", dir)
+        em.closeComposer(DemoScenario.render)
+        e.local.update(DemoScenario.render) { $0.status = "running" }
+        await e.refresh(2)
         em.composer.drafts[ComposerStore.messageKey(DemoScenario.render)] = "When the PDF is done, attach it to the release draft."
         em.openDetail(DemoScenario.render); await e.refresh()
         save(em, "41-detail-composer", dir)
