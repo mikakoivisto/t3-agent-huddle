@@ -6,7 +6,7 @@ Needs Xcode (Swift 6.x) on macOS 14+. Nothing global is installed; everything st
 
 ```sh
 swift build                 # or: open Package.swift in Xcode
-swift test                  # 271 tests; fake server on an ephemeral 127.0.0.1 port; never touches ~/.t3
+swift test                  # 272 tests; fake server on an ephemeral 127.0.0.1 port; never touches ~/.t3
 ```
 
 ### Fake-server demo (no T3 needed)
@@ -61,5 +61,5 @@ Sources/FakeT3       loopback HTTP server + fake T3 tools + synthetic scenarios 
 Sources/AgentHuddle  SwiftUI views, NSPanel, menu-bar item, Inline approvals window, About, snapshot + demo recorder
 Sources/fake-t3      standalone fake server
 Sources/huddle-probe live-check tool (scripts/live-check.sh)
-Tests/               271 tests, §11 layers
+Tests/               272 tests, §11 layers
 ```
