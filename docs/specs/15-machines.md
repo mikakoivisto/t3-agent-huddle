@@ -1,6 +1,6 @@
 # 15 — Machines: connect to any T3, this Mac or another
 
-**Status:** proposed, not built · **Evidence:** both of the maintainer's Macs serve T3's MCP and its OAuth metadata at their Tailscale https address (checked 2026-11-15 with unauthenticated requests only: `/mcp` answers `401` with `resource_metadata` and `authorization_servers` pointing to the same https origin; `/oauth/mcp/register`, `/authorize` and `/token` are advertised there). Nothing has signed in to a remote MCP yet.
+**Status:** built (core and window), M1–M4 decided as recommended · **Evidence:** live on 2026-11-15 (`scripts/live-check.sh --remote-mcp <https address> --remote-send …`, against the Mac mini's own Tailscale https address with throwaway threads): identity check, OAuth sign-in with a pairing code on that machine's T3 page, 71 tools and the contract check, thread list, a steer that reached the running turn, a queued message that became the next turn, and a written answer that arrived word for word. `MachinesTests` cover the rest against two fakes. The Machines window itself has not been clicked through by hand.
 
 Supersedes, once built: the "this Mac only" connection of spec 08, the link-based remote view of spec 09, and the separate Inline approvals window of spec 07 (folded into the Machines window). Spec 06 and 07's decision rules stay as they are.
 
@@ -51,6 +51,8 @@ The panel's "Connect to T3 Code" card offers:
 
 ### The Machines window (menu bar → Machines…)
 
+*As built:* the Allow / Deny line shows the machine's approvals state with **Set up…** / **Manage…**, which opens the existing Inline approvals window (spec 07) rather than folding its steps into the row; the sign-in level is not shown (MCH-Q1).
+
 One row per machine: name, address, how it is connected (This Mac · Connected · Linked only · Offline · Sign-in expired), its sign-in level when T3 reports it, and two switches: **Answers & messages** (the MCP sign-in) and **Allow / Deny** (inline approvals). Each row has **Sign out**. "Add machine…" at the bottom.
 
 ### Signing out
@@ -81,7 +83,7 @@ Per machine, from its row: forgets that machine's MCP token (and, separately, it
 
 - **MCH-Q1:** does T3 report the sign-in's access level, so the row can show it?
 - **MCH-Q2:** should a remote machine's threads be openable in T3 Code from here (↗)? The deep link needs that machine to be linked in this Mac's T3 app.
-- **MCH-Q3:** does the remote sign-in page accept the decision with a pairing code exactly like this Mac's (verify live)?
+- **MCH-Q3 (answered 2026-11-15):** yes, the remote sign-in page takes the pairing-code decision exactly like this Mac's.
 
 ## Sources
 

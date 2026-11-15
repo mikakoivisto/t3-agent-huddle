@@ -88,7 +88,7 @@ None.
 
 | ID | Statement | Tests | Evidence |
 |---|---|---|---|
-| PKG-01 | The package builds, and its tests pass with no real T3 and no `~/.t3` access | `swift test` (258 tests in 32 suites) | **Run for this review** before the history cleanup: all passed in about 1 s. Not run by CI |
+| PKG-01 | The package builds, and its tests pass with no real T3 and no `~/.t3` access | `swift test` (271 tests in 33 suites) | **Run for this review** before the history cleanup: all passed in about 1 s. Not run by CI |
 | PKG-02 | `scripts/build-app.sh` produces `dist/Agent Huddle.app` and `dist/AgentHuddle.zip` with the bundle id, version, `LSUIElement`, icon, licence, ad-hoc signature | none | **None** in this review (the script writes to `assets/`, outside the allowed paths) |
 | PKG-03 | The app does not read the Keychain or `~/.t3` in `--fixture` mode | `SecurityTests.sourcesTouchHomeT3OnlyForTheRuntimeFileAndNeverOpenSQLite` (static); `main.swift` wiring | Fake (static) |
 | PKG-04 | The release version comes from the tag | none | **None** |
