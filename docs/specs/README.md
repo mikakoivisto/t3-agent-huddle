@@ -22,6 +22,8 @@ These specs describe Agent Huddle **as it is built on `main`**, recovered from t
 | 10 | [Menu-bar item](10-menu-bar-item.md) | animated robot with working count, menu items |
 | 11 | [Packaging and distribution](11-packaging-and-distribution.md) | build script, icon, About, CI and release, ad-hoc signing |
 | 12 | [Cross-cutting rules](12-non-functional-rules.md) | security hard rules, polling, privacy, quality gates |
+| 13 | [Write and send](13-write-and-send.md) | written answers, messages to any thread, steer or queue |
+| 14 | [Dictation](14-dictation.md) | **proposed:** dictate into the composer, on-device or a local server |
 
 ## How to read a spec
 
