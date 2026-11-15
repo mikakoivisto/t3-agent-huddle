@@ -39,7 +39,7 @@ final class DemoRecorder {
         await beat("Every running T3 thread, in one place", "Grouped by machine: this MacBook Pro and the linked Mac mini. Steps, run time, model and project on each row; the menu-bar robot walks and counts.", seconds: 5.5)
 
         // A question, answered in the panel.
-        await beat("A thread asks a question", "It rises to the top and the row lights up.", seconds: 3) { DemoScenario.addQuestion(self.local); await self.model.refresh() }
+        await beat("A thread asks a question", "It rises to the top and the row lights up. The orange count, in the menu bar and by the title, says how many need you.", seconds: 3.5) { DemoScenario.addQuestion(self.local); await self.model.refresh() }
         if let q = model.state.sessions[DemoScenario.changelog]?.question {
             await beat("Pick an answer in the panel", seconds: 1.8) { self.model.select(option: q.options[1].label, for: q) }
             await beat("Send answers it through T3’s MCP", "No window switch; the agent carries on.", seconds: 2.2) {
@@ -59,6 +59,26 @@ final class DemoRecorder {
         await beat("A failed step is red, with its error", seconds: 3, ticks: true) { await self.model.toggleStep(threadId: DemoScenario.render, stepId: "item_3") }
         await beat("It can run on a different model than asked", "Asked for Claude Opus 5.5, ran on Claude Sonnet 5.5.", seconds: 2.5) {
             self.model.back(); self.model.openDetail(DemoScenario.docs); await self.model.refresh()
+        }
+
+        // Messages (spec 13).
+        await beat("Message a thread", "Typed by you, sent on a click: queued after the current turn, or steered into it.", seconds: 3) {
+            self.model.back(); self.model.openDetail(DemoScenario.render); await self.model.refresh()
+            self.model.composer.drafts[ComposerStore.messageKey(DemoScenario.render)] = "When the PDF is done, attach it to the release draft."
+        }
+        await beat("Queued: T3 delivers it when the turn ends", seconds: 2.5) { await self.model.sendMessage(threadId: DemoScenario.render) }
+
+        // New threads (spec 16).
+        await beat("Start a new thread from the panel", "The + by the title (⌘N): pick the machine and project, type the task.", seconds: 3.5) {
+            self.model.back(); self.model.openNewThread()
+            try? await Task.sleep(nanoseconds: 300_000_000)
+            self.model.composer.drafts[HuddleModel.newThreadKey] = "Add a CHANGELOG entry for 2.4 from the merged PRs, then open a PR."
+        }
+        await beat("Options: model, mode, worktree, plan first", "Their defaults live in Settings → General → New threads.", inset: .newThreadDefaults, seconds: 3.5) {
+            self.model.newThreadOptions = true
+        }
+        await beat("Start: the thread joins the list", "On this Mac or any machine connected directly.", seconds: 3) {
+            self.model.newThreadOptions = false; await self.model.startNewThread()
         }
 
         // Waiting states.

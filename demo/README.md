@@ -2,11 +2,11 @@
 
 A short video and one screenshot per feature. Everything here ran against **two fake T3 machines** (`Sources/FakeT3`), on `127.0.0.1` only. No real T3 Code, no token, no Keychain, nothing under `~/.t3`. All thread titles, commands, ids and model names are invented.
 
-The two machines are **Mika’s MacBook Pro** (plays "this Mac") and **Mika’s Mac mini** (plays a linked machine). Their names are labels set on the fakes; no real machine is involved. Hostnames in the Inline approvals window (`*.tailnet-demo.ts.net`) are invented too.
+The two machines are **Mika’s MacBook Pro** (plays "this Mac") and **Mika’s Mac mini** (plays a linked machine). Their names are labels set on the fakes; no real machine is involved. Hostnames in Settings → Machines (`*.tailnet-demo.ts.net`) are invented too.
 
 ## Video
 
-[`agent-huddle-demo.mp4`](agent-huddle-demo.mp4): about 92 s, 1300×1000, H.264. A splash card with the name and that picture opens it, then the real floating panel on a stage with captions. [`agent-huddle-preview.gif`](agent-huddle-preview.gif) is its first 30 s, used inline in the README.
+[`agent-huddle-demo.mp4`](agent-huddle-demo.mp4): about 105 s, 1300×1000, H.264. A splash card with the name and that picture opens it, then the real floating panel on a stage with captions. [`agent-huddle-preview.gif`](agent-huddle-preview.gif) is its first 30 s, used inline in the README.
 
 ## Stills
 
@@ -40,6 +40,18 @@ The two machines are **Mika’s MacBook Pro** (plays "this Mac") and **Mika’s 
 | `29-app-icon` | The app icon, 512 px |
 | `30-jump-toast` | The toast when a deep link could not be delivered |
 | `31-t3-not-running` / `32-connect-to-t3` | The degraded states |
+| `33-secret-request` | A thread asking for a secret: answered in T3 Code only |
+| `34-question-write-answer` / `35-question-writing-answer` | "Write answer": a typed answer instead of an option |
+| `36-message-running-queue` / `37-message-running-steer` / `38-message-steered` | Messaging a running thread: queue, steer, and after a steer |
+| `39-message-finished-send` / `40-message-run-finished` | Messaging a finished thread, and the run it starts |
+| `41-detail-composer` / `42-pop-out-editor` | The composer in a thread's detail, and the pop-out editor for long text |
+| `43-message-read-only` | Read-only mode: no sending, with the reason |
+| `44-machines-panel` / `45-machines-window` / `46-machines-add` | Machines connected directly, Settings → Machines, adding a machine |
+| `50-attention-menu-bar` | The orange count in the menu bar, light and dark (**drawn on a strip**) |
+| `51-attention-header-pill` / `52-attention-collapsed` / `53-attention-detail` | The orange count by the title: expanded, collapsed (with the +), in a detail |
+| `54-settings-general` / `55-settings-machines` | The Settings window: General, and Machines with a setup open |
+| `56-new-thread` / `57-new-thread-options` / `58-new-thread-started` | Starting a new thread: the composer, its options, the started thread |
+| `59-settings-new-threads` | Settings → General → New threads (the defaults) |
 
 ## What is fake or approximate
 

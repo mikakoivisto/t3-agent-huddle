@@ -282,6 +282,24 @@ enum Snapshots {
         write(SettingsView(model: hm, selection: sel, flow: AddMachineFlow(), setup: DemoApprovalsData.setup(hm, open: ApprovalSetup.thisMac)).environment(\.snapshotMode, true), "55-settings-machines", dir, scale: 2)
         h.stop()
 
+        // I. New thread (spec 16): the composer, its options, a started thread, the Settings section.
+        let n = await DemoRig.make(prefs: prefs.appendingPathComponent("n"))
+        DemoScenario.start(n.local, only: [DemoScenario.docs, DemoScenario.render])
+        await n.refresh()
+        let nm = n.model
+        nm.openNewThread()
+        try? await Task.sleep(nanoseconds: 300_000_000)
+        nm.composer.drafts[HuddleModel.newThreadKey] = "Add a CHANGELOG entry for 2.4 from the merged PRs, then open a PR."
+        save(nm, "56-new-thread", dir)
+        nm.newThreadOptions = true
+        save(nm, "57-new-thread-options", dir)
+        nm.newThreadOptions = false
+        await nm.startNewThread()
+        save(nm, "58-new-thread-started", dir)
+        write(SettingsView(model: nm, selection: SettingsSelection(), flow: AddMachineFlow(), setup: ApprovalSetup(model: nm))
+                .environment(\.snapshotMode, true), "59-settings-new-threads", dir, scale: 2)
+        n.stop()
+
         // D. Closing, the collapsed header, a jump that cannot be delivered, and T3 going away.
         let d = await DemoRig.make(prefs: prefs.appendingPathComponent("d"))
         DemoScenario.start(d.local); DemoScenario.addWaiters(d.local)

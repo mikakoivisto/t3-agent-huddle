@@ -122,6 +122,22 @@ public final class HuddleModel: ObservableObject {
     /// The row the header pill asked to scroll to, and the row whose outline flashes once.
     @Published public var revealThreadId: String?
     @Published public private(set) var flashThreadId: String?
+    // Spec 16: the new-thread composer.
+    @Published public private(set) var newThreadDefaults = NewThreadDefaults()
+    @Published public var newThreadOpen = false
+    @Published public var newThreadMachine: String?
+    /// nil = Scratch.
+    @Published public var newThreadProject: String?
+    @Published public var newThreadModel: ModelChoice?
+    @Published public var newThreadMode: LaunchMode = .auto
+    @Published public var newThreadWorkspace: LaunchWorkspace = .checkout
+    @Published public var newThreadPlan = false
+    @Published public var newThreadTitle = ""
+    @Published public var newThreadOptions = false
+    @Published public internal(set) var newThreadState: QuestionUIState?
+    @Published public internal(set) var projectsByMachine: [String: [ProjectSummary]] = [:]
+    @Published public internal(set) var capabilitiesByMachine: [String: [ProviderModels]] = [:]
+    var pendingLaunch: (fingerprint: String, id: String)?
     @Published public private(set) var consecutiveFailures = 0
     /// Why the last connect attempt failed (shown under the Connect button). Never contains the token.
     @Published public private(set) var connectNote: String?
@@ -176,6 +192,7 @@ public final class HuddleModel: ObservableObject {
         readOnly = prefs.readOnly; closeSettles = prefs.closeSettles
         showPanelOnAttention = prefs.showPanelOnAttention ?? false
         settingsOnTop = prefs.settingsOnTop ?? true
+        newThreadDefaults = prefs.newThread ?? NewThreadDefaults()
         inlineApprovals = config.approvalStore.load() != nil
         connectedMachineIds = Set(config.machineStore.environmentIds())
     }
@@ -619,6 +636,7 @@ public final class HuddleModel: ObservableObject {
     public func setCloseSettles(_ v: Bool) { closeSettles = v; prefs.closeSettles = v; persist() }
     public func setShowPanelOnAttention(_ v: Bool) { showPanelOnAttention = v; prefs.showPanelOnAttention = v; persist() }
     public func setSettingsOnTop(_ v: Bool) { settingsOnTop = v; prefs.settingsOnTop = v; persist() }
+    public func setNewThreadDefaults(_ d: NewThreadDefaults) { newThreadDefaults = d; prefs.newThread = d; persist() }
     /// "Chime when something needs me" (Settings) and the panel's speaker button change the same thing.
     public func setChime(_ on: Bool) { if muted == on { toggleMute() } }
 

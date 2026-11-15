@@ -8,6 +8,7 @@ A small floating macOS panel and menu-bar item that shows what your [T3 Code](ht
 
 - **Every running thread in one place**, on this Mac and on any other machine you connect (no local T3 needed), grouped by machine, with steps, run time, model and project.
 - **Answer a question** an agent asks without leaving what you are doing, by picking an option or writing your own answer.
+- **Start a new thread** on any connected machine from the panel.
 - **Message any thread**: queue a message for the next turn, or **steer** a running one now.
 - **See exactly what an agent wants to run**, and (optionally) **Allow or Deny it** from the panel, for threads on this Mac and on other machines.
 - **A menu-bar robot** that walks while threads are working and counts them.

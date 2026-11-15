@@ -25,13 +25,14 @@ struct MenuBarGlyph: View {
 struct MenuBarStrip: View {
     var count: Int
     var frame: Int
+    var attention = 0
     var body: some View {
         HStack(spacing: 16) {
             Spacer()
             Image(systemName: "magnifyingglass")
             Image(systemName: "wifi")
             Image(systemName: "battery.100")
-            MenuBarGlyph(count: count, frame: frame)
+            MenuBarGlyph(count: count, frame: frame, attention: attention)
             Text(verbatim: "Fri 9:41")
         }
         .font(.system(size: 13, weight: .medium)).foregroundStyle(.white.opacity(0.85))
@@ -96,6 +97,7 @@ enum DemoInset {
     case none
     case modelIcons
     case approvals(ApprovalSetup)
+    case newThreadDefaults
     case about(NSImage?, NSImage?)
 }
 
@@ -112,7 +114,7 @@ struct DemoFrameView: View {
     var body: some View {
         ZStack(alignment: .topLeading) {
             LinearGradient(colors: [Color(white: 0.04), Color(red: 0.07, green: 0.08, blue: 0.03)], startPoint: .top, endPoint: .bottom)
-            MenuBarStrip(count: count, frame: frame).frame(width: Self.size.width).frame(maxHeight: .infinity, alignment: .top)
+            MenuBarStrip(count: count, frame: frame, attention: model.state.attentionCount).frame(width: Self.size.width).frame(maxHeight: .infinity, alignment: .top)
             VStack(alignment: .leading, spacing: 8) {
                 Text(verbatim: caption).font(.system(size: 31, weight: .bold, design: .serif)).foregroundStyle(.white)
                     .fixedSize(horizontal: false, vertical: true)
@@ -138,6 +140,14 @@ struct DemoFrameView: View {
             MachinesView(model: model, flow: AddMachineFlow(), setup: setup).environment(\.snapshotMode, true)
                 .clipShape(RoundedRectangle(cornerRadius: 14))
                 .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.white.opacity(0.1), lineWidth: 1))
+        case .newThreadDefaults:
+            VStack(alignment: .leading, spacing: 8) {
+                Text(verbatim: "SETTINGS → GENERAL → NEW THREADS").font(.system(size: 10.5, weight: .heavy)).foregroundStyle(Theme.grey)
+                NewThreadDefaultsSection(model: model)
+            }
+            .padding(16).background(Theme.panel).environment(\.snapshotMode, true)
+            .clipShape(RoundedRectangle(cornerRadius: 14))
+            .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.white.opacity(0.1), lineWidth: 1))
         case .about(let about, let icon):
             HStack(alignment: .top, spacing: 20) {
                 if let icon { Image(nsImage: icon).resizable().frame(width: 128, height: 128) }
@@ -175,7 +185,7 @@ struct SplashView: View {
                     Rectangle().fill(Theme.lime).frame(width: 84, height: 4)
                     Text(verbatim: "Every running T3 Code thread, on every machine, in one floating panel.")
                         .font(.system(size: 21)).foregroundStyle(Color(white: 0.72)).fixedSize(horizontal: false, vertical: true)
-                    Text(verbatim: "Answer a question. Allow or Deny a command. Jump to the thread.")
+                    Text(verbatim: "Answer a question. Allow or Deny a command. Message a thread, or start a new one.")
                         .font(.system(size: 15)).foregroundStyle(Color(white: 0.5)).fixedSize(horizontal: false, vertical: true)
                 }
                 .frame(width: 470, alignment: .leading)
