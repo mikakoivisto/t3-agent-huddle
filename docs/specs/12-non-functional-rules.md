@@ -67,7 +67,7 @@ This spec owns the rules the other specs reuse. Feature specs link here instead 
 
 ### Quality gates
 
-- **Tests:** Swift Testing (`@Suite`, `@Test`, `#expect`). 278 tests in 34 suites. Run one suite by struct name (`swift test --filter SecurityTests`).
+- **Tests:** Swift Testing (`@Suite`, `@Test`, `#expect`). 291 tests in 35 suites. Run one suite by struct name (`swift test --filter SecurityTests`).
 - **No linter or formatter** is configured; match the surrounding style.
 - **UI checks:** `AgentHuddle --snapshot DIR` renders every UI state to PNGs; add each new state to `Snapshots.swift`. No automated test clicks the panel.
 - **Change together:** a new T3 tool or argument updates the fake handler and the allowed set in `ModelTests.clientNeverCallsForbiddenToolsOrIncludeSubagents`; `ContractCheck.required` lists only tools the app cannot work without; a bug found against real T3 gets the fake corrected and a regression test; the test count in README and `docs/specs/status.md` is updated; approval frame changes update `FakeApprovals.swift`.

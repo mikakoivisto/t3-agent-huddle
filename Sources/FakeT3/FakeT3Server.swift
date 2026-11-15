@@ -108,6 +108,11 @@ public final class FakeT3Server: @unchecked Sendable {
     private var deliveredRequestIds: Set<String> = []
     /// Messages T3 accepted (a repeat of a `clientRequestId` is dropped, as T3's own dedupe would).
     public var sends: [Send] { lock.lock(); defer { lock.unlock() }; return _sends }
+    public struct Launch: Sendable { public var args: JSON; public var threadId: String }
+    private var _launches: [Launch] = []
+    private var launchedIds: [String: String] = [:]
+    /// Threads started through `t3_thread_launch` (a repeat of a `clientRequestId` returns the first thread, as T3 would).
+    public var launches: [Launch] { lock.lock(); defer { lock.unlock() }; return _launches }
     private var _requestCount = 0
     private var issuedTokens: Set<String> = []
     private var linkedIds: Set<String>?
@@ -309,7 +314,10 @@ public final class FakeT3Server: @unchecked Sendable {
         // Written messages (spec 13): T3's published arguments. The client may send only queue or steer.
         "t3_thread_send": ["threadId", "message", "mode", "clientRequestId", "freshContext", "environmentId"],
         // Tools the huddle must never call (§7.2); present so a bug would be observable.
-        "t3_thread_launch": ["projectId", "prompt"],
+        // Spec 16: starting a thread, the project list and the model catalog.
+        "t3_thread_launch": ["title", "message", "projectId", "scratch", "environmentId", "modelSelection", "runtimeMode", "interactionMode", "workspaceStrategy", "clientRequestId"],
+        "t3_project_list": ["cursor", "environmentId", "limit"],
+        "orchestrator_capabilities": ["environmentId", "search"],
         "t3_thread_interrupt": ["threadId"],
     ]
 
@@ -355,6 +363,37 @@ public final class FakeT3Server: @unchecked Sendable {
             case "t3_pending_request": payload = try pending(args, o)
             case "t3_project_read":
                 payload = ["project": ["projectId": args["projectId"], "title": .string(args["projectId"].string.flatMap { o.projectTitles[$0] } ?? "Demo project"), "path": "/tmp/fake-demo-project"]]
+            case "t3_project_list":
+                lock.lock()
+                var ids = Set(threads.values.filter { $0.environmentId == (args["environmentId"].string ?? o.environmentId) }.map(\.projectId))
+                ids.formUnion(o.projectTitles.keys)
+                lock.unlock()
+                let rows: [JSON] = ids.sorted().map { id in ["id": .string(id), "title": .string(o.projectTitles[id] ?? "Demo project"), "updatedAt": "2026-11-15T10:00:00.000Z", "archivedAt": .null, "deletedAt": .null] }
+                payload = ["projects": .array(rows), "nextCursor": .null]
+            case "orchestrator_capabilities":
+                payload = ["providers": [
+                    ["providerInstanceId": "claudeAgent", "displayName": "Claude", "constraints": [],
+                     "models": [["id": "claude-opus-5-5", "label": "Claude Opus 5.5"], ["id": "claude-sonnet-5-5", "label": "Claude Sonnet 5.5"]]],
+                    ["providerInstanceId": "codex", "displayName": "Codex", "constraints": [], "models": [["id": "gpt-6.1-sol"]]],
+                    ["providerInstanceId": "pi", "displayName": "Pi", "constraints": [], "runtimeModes": ["approval-required", "auto-accept-edits", "full-access"],
+                     "models": [["id": "ollama/qwen3.8-pi:latest", "label": "Qwen3.8-27B · Ollama"]]],
+                    ["providerInstanceId": "opencode", "displayName": "OpenCode", "constraints": ["Provider instance is disabled."], "models": []],
+                ]]
+            case "t3_thread_launch":
+                guard !o.modeEscalationDenied else { throw FakeToolError(#"{"_tag":"OrchestratorMcpFailure","code":"runtime_mode_escalation_denied","message":"Child runtime mode auto is broader than the caller's approval-required."}"#) }
+                guard let title = args["title"].string, !title.isEmpty else { throw FakeToolError("title is required") }
+                let rid = args["clientRequestId"].string
+                lock.lock()
+                if let rid, let existing = launchedIds[rid] { lock.unlock(); payload = ["threadId": .string(existing), "status": "preparing"]; break }
+                let id = "thr_launched_\(_launches.count + 1)"
+                if let rid { launchedIds[rid] = id }
+                _launches.append(Launch(args: args, threadId: id))
+                lock.unlock()
+                add(FakeThread(id: id, title: title, status: "running", environmentId: args["environmentId"].string ?? o.environmentId,
+                               providerInstanceId: args["modelSelection"]["instanceId"].string ?? "claudeAgent",
+                               model: args["modelSelection"]["model"].string ?? "claude-sonnet-5-5",
+                               projectId: args["projectId"].string ?? "proj_scratch"))
+                payload = ["threadId": .string(id), "status": "preparing"]
             case "t3_thread_send":
                 guard !o.failSends else { throw FakeToolError("fake send failure") }
                 if o.linkedSendDenied, args["environmentId"].string != nil {

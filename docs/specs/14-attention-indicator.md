@@ -21,9 +21,9 @@ The rows in `attention` `.needsPermission`, `.asksQuestion` or `.needsSecret` (s
 
 ### Panel
 
-- **Header pill:** "2 need you" (orange) beside the title, in the expanded and the collapsed header. A click expands the panel if collapsed, goes back to the list if a detail is open, scrolls to the first such row and flashes its outline once.
-- **Collapsed header:** the pill plus up to three small buddies of the threads that need you.
-- **Detail view:** the top bar shows the pill when another thread needs you.
+- **Header count:** while threads need you, the count beside the title turns into the orange badge from the menu bar, showing how many need you (it was a "2 need you" pill until the user found the header too crowded); otherwise it is the grey row count. Same in the expanded and the collapsed header. A click expands the panel if collapsed, goes back to the list if a detail is open, scrolls to the first such row and flashes its outline once.
+- **Collapsed header:** the badge and the "+" (spec 16); the small buddies of the threads that need you were removed (too crowded).
+- **Detail view:** the top bar shows the badge when another thread needs you.
 
 ### Optional: bring the panel back
 
@@ -35,7 +35,7 @@ The rows in `attention` `.needsPermission`, `.asksQuestion` or `.needsSecret` (s
 
 ### Settings window (approved with this spec)
 
-Menu bar → **Settings… (⌘,)**: tabs **General** (Attention: Show the panel when something needs me, Chime when something needs me; Answering: Read-only mode, Close also settles finished threads in T3; Window: Keep this window on top) and **Machines** (the former Machines window, spec 15). On top by default. The menu keeps Show / Hide, Settings…, About and Quit. The panel's speaker button and "Chime" are one setting. "Allow / Deny" is now **Approve commands from the panel**, and "Answers & messages" is **Connected**; both are lines in each machine's row, and the approvals setup opens in place (approved from a mockup), so no separate window opens.
+Menu bar → **Settings… (⌘,)**: tabs **General** (Attention: Show the panel when something needs me, Chime when something needs me; Answering: Read-only mode, Close also settles finished threads in T3; New threads (spec 16); Window: Keep this window on top) and **Machines** (the former Machines window, spec 15). On top by default. The menu keeps Show / Hide, Settings…, About and Quit. The panel's speaker button and "Chime" are one setting. "Allow / Deny" is now **Approve commands from the panel**, and "Answers & messages" is **Connected**; both are lines in each machine's row, and the approvals setup opens in place (approved from a mockup), so no separate window opens.
 
 ## Acceptance criteria
 

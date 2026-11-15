@@ -85,8 +85,13 @@ struct SettingsView: View {
 
 struct GeneralSettingsView: View {
     @ObservedObject var model: HuddleModel
+    @Environment(\.snapshotMode) private var snapshot
 
     var body: some View {
+        if snapshot { content } else { ScrollView { content } }
+    }
+
+    private var content: some View {
         VStack(alignment: .leading, spacing: 6) {
             section("ATTENTION")
             group {
@@ -105,6 +110,8 @@ struct GeneralSettingsView: View {
                 SettingRow(title: "Close also settles finished threads in T3", detail: "× on a finished thread settles it in T3 Code too.",
                            on: model.closeSettles) { model.setCloseSettles($0) }
             }
+            section("NEW THREADS")
+            NewThreadDefaultsSection(model: model)
             section("WINDOW")
             group {
                 SettingRow(title: "Keep this window on top", detail: "Settings float above other apps while open.",

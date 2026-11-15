@@ -25,6 +25,7 @@ These specs describe Agent Huddle **as it is built on `main`**, recovered from t
 | 13 | [Write and send](13-write-and-send.md) | written answers, messages to any thread, steer or queue |
 | 14 | [Attention indicator and Settings](14-attention-indicator.md) | orange count in the menu bar, "need you" pill, bring the panel back, one Settings window |
 | 15 | [Machines](15-machines.md) | connect to T3 on this Mac or any other machine, each through its own MCP; one Machines window |
+| 16 | [New thread](16-new-thread.md) | start a thread from the panel: machine, project, task, options; defaults in Settings |
 
 ## How to read a spec
 

@@ -531,6 +531,8 @@ public struct Preferences: Codable, Equatable, Sendable {
     /// Spec 14. Optional so a preferences file from an earlier version still loads.
     public var showPanelOnAttention: Bool?
     public var settingsOnTop: Bool?
+    /// Spec 16: defaults for new threads and what was used last.
+    public var newThread: NewThreadDefaults?
     public init() {}
 }
 

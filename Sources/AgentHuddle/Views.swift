@@ -128,18 +128,18 @@ struct HeaderBar: View {
         HStack(spacing: 8) {
             Circle().fill(model.anyMachineConnected ? Theme.lime : Theme.dim).frame(width: 9, height: 9)
             Text(verbatim: "Agent Huddle").font(.system(size: 20, weight: .bold)).foregroundStyle(.white).lineLimit(1).fixedSize()
-            // Collapsed with something waiting: the pill and its buddies say more than the row count, and there is room for one.
-            if !(model.collapsed && !model.attentionSessions.isEmpty) {
+            // The count: orange (the menu-bar badge) while threads need you, a click goes to the first one; grey otherwise (spec 14).
+            if model.attentionSessions.isEmpty {
                 Text(verbatim: "\(model.state.count)").font(.system(size: 17, weight: .semibold)).foregroundStyle(Theme.grey).fixedSize()
+            } else {
+                AttentionPill(model: model)
             }
-            AttentionPill(model: model)
-            if model.collapsed {   // collapsed: who needs you, without expanding (spec 14)
-                HStack(spacing: -4) {
-                    ForEach(model.attentionSessions.prefix(3)) { s in
-                        RoundedRectangle(cornerRadius: 4).fill(Theme.buddy(s.buddy)).frame(width: 16, height: 16)
-                            .overlay(RoundedRectangle(cornerRadius: 4).stroke(Theme.panel, lineWidth: 2))
-                    }
-                }
+            if model.canStartThreads {   // spec 16: start a new thread (expands a collapsed panel)
+                Button { model.newThreadOpen ? model.closeNewThread() : model.openNewThread() } label: {
+                    Image(systemName: model.newThreadOpen ? "xmark" : "plus").font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(model.newThreadOpen ? .black : .white).frame(width: 22, height: 22)
+                        .background(RoundedRectangle(cornerRadius: 7).fill(model.newThreadOpen ? Theme.lime : Color.white.opacity(0.1)))
+                }.buttonStyle(.plain).help("Start a new thread (⌘N)").keyboardShortcut("n", modifiers: .command)
             }
             Spacer(minLength: 4)
             IconButton(system: model.muted ? "speaker.slash" : "speaker.wave.2", help: model.muted ? "Unmute" : "Mute") { model.toggleMute() }
@@ -521,6 +521,7 @@ struct HuddleRootView: View {
                 HeaderBar(model: model)
                 if !model.collapsed {
                     ConnectionBanner(model: model)
+                    if model.newThreadOpen && model.canStartThreads { NewThreadComposer(model: model, store: model.composer) }
                     if model.sessions.isEmpty {
                         if model.anyMachineConnected {
                             Text(verbatim: "No active threads").font(.system(size: 14)).foregroundStyle(Theme.grey).padding(.vertical, 8)
@@ -568,7 +569,8 @@ extension Theme {
     static let attention = Color(red: 1.0, green: 0.54, blue: 0.12)
 }
 
-/// "2 need you": shown while threads ask for something. A click goes to the first one (or the first other one, in a detail view).
+/// The attention count in orange, like the menu-bar badge: shown while threads ask for something.
+/// A click goes to the first one (or the first other one, in a detail view).
 struct AttentionPill: View {
     @ObservedObject var model: HuddleModel
     var excluding: String? = nil
@@ -576,10 +578,11 @@ struct AttentionPill: View {
         let n = model.attentionSessions.filter { $0.threadId != excluding }.count
         if n > 0 {
             Button { model.revealAttention(excluding: excluding) } label: {
-                Text(verbatim: "\(n) need\(n == 1 ? "s" : "") you").font(.system(size: 11.5, weight: .heavy)).foregroundStyle(.black)
+                Text(verbatim: n > 99 ? "99+" : "\(n)").font(.system(size: 14, weight: .heavy).monospacedDigit()).foregroundStyle(.black)
                     .lineLimit(1).fixedSize()
-                    .padding(.horizontal, 8).padding(.vertical, 3).background(Capsule().fill(Theme.attention))
-            }.buttonStyle(.plain).help("Show the thread that needs you")
+                    .padding(.horizontal, 7).frame(minWidth: 22, minHeight: 20).background(Capsule().fill(Theme.attention))
+            }.buttonStyle(.plain).help(n == 1 ? "1 thread needs you" : "\(n) threads need you")
+             .accessibilityLabel(n == 1 ? "1 needs you" : "\(n) need you")
         }
     }
 }
