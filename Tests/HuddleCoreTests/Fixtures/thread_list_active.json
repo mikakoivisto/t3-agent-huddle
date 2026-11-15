@@ -1,0 +1,6 @@
+{"threads":[
+ {"threadId":"thr_a","projectId":"proj_1","title":"Render release notes","link":"t3-thread://v2/env_x/thr_a","status":"running","model":"m","settled":false,"snoozed":false,"itemCount":4,"updatedAt":"2026-11-14T13:00:05.000Z"},
+ {"threadId":"thr_b","projectId":"proj_1","title":"Draft changelog","link":"t3-thread://v2/env_x/thr_b","status":"waiting","settled":false,"snoozed":false,"itemCount":2,"updatedAt":"2026-11-14T13:00:01.000Z"},
+ {"threadId":"thr_child","projectId":"proj_1","title":"Subagent","status":"running","parentThreadId":"thr_a","relationshipToParent":"subagent","itemCount":1,"updatedAt":"2026-11-14T13:00:09.000Z"},
+ {"threadId":"thr_idle","projectId":"proj_1","title":"Idle","status":"idle","itemCount":0,"updatedAt":"2026-11-01T00:00:00.000Z"}
+]}

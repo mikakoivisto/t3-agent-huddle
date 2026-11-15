@@ -1,0 +1,457 @@
+import SwiftUI
+import HuddleCore
+
+// Agent-supplied strings (titles, commands, questions, options) are always rendered with
+// `Text(verbatim:)`: no markdown, no links, so an agent cannot draw a fake button (SPEC §10).
+
+// MARK: - Snapshot support
+
+private struct SnapshotModeKey: EnvironmentKey { static let defaultValue = false }
+extension EnvironmentValues {
+    /// `ImageRenderer` cannot draw `ScrollView` content, so offscreen snapshots swap it for a plain stack.
+    var snapshotMode: Bool { get { self[SnapshotModeKey.self] } set { self[SnapshotModeKey.self] = newValue } }
+}
+
+private struct ExpandCommandsKey: EnvironmentKey { static let defaultValue = false }
+extension EnvironmentValues {
+    /// Snapshots only: draw long commands as if "Show full command" had been tapped (that toggle is view state, not model state).
+    var expandCommands: Bool { get { self[ExpandCommandsKey.self] } set { self[ExpandCommandsKey.self] = newValue } }
+}
+
+/// Scrolls when the panel is shorter than its content. Its ideal height is the content's own height, so the window
+/// fits the content when there is room and the list shrinks and scrolls when the window is capped or dragged shorter.
+struct MaybeScroll<Content: View>: View {
+    @Environment(\.snapshotMode) private var snapshot
+    @State private var contentHeight: CGFloat = 0
+    @ViewBuilder var content: () -> Content
+    var body: some View {
+        if snapshot { content() }
+        else {
+            ScrollView(showsIndicators: false) {
+                content().background(GeometryReader { Color.clear.preference(key: ContentHeightKey.self, value: $0.size.height) })
+            }
+            .onPreferenceChange(ContentHeightKey.self) { contentHeight = $0 }
+            .frame(minHeight: 0, idealHeight: max(contentHeight, 1), maxHeight: contentHeight > 0 ? contentHeight : nil)
+        }
+    }
+}
+
+private struct ContentHeightKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = max(value, nextValue()) }
+}
+
+// MARK: - Buddy
+
+struct BuddyView: View {
+    var index: Int
+    var size: CGFloat = 44
+    var body: some View {
+        let c = Theme.buddy(index)
+        VStack(spacing: 0) {
+            ZStack {
+                RoundedRectangle(cornerRadius: size * 0.14, style: .continuous).fill(c)
+                VStack(spacing: size * 0.10) {
+                    HStack(spacing: size * 0.20) {
+                        RoundedRectangle(cornerRadius: 1.5).fill(Color.black.opacity(0.75)).frame(width: size * 0.11, height: size * 0.15)
+                        RoundedRectangle(cornerRadius: 1.5).fill(Color.black.opacity(0.75)).frame(width: size * 0.11, height: size * 0.15)
+                    }
+                    Capsule().fill(Color.black.opacity(0.75)).frame(width: size * 0.22, height: size * 0.05)
+                }
+            }
+            .frame(width: size * 0.84, height: size * 0.92)
+            HStack(spacing: size * 0.30) {
+                RoundedRectangle(cornerRadius: 2).fill(c.opacity(0.9)).frame(width: size * 0.13, height: size * 0.12)
+                RoundedRectangle(cornerRadius: 2).fill(c.opacity(0.9)).frame(width: size * 0.13, height: size * 0.12)
+            }
+        }
+        .frame(width: size, height: size * 1.04)
+    }
+}
+
+struct BuddyPill: View {
+    var index: Int
+    var selected: Bool
+    var body: some View {
+        ZStack {
+            Capsule().fill(Theme.buddy(index)).frame(width: 30, height: 22)
+            HStack(spacing: 5) {
+                Capsule().fill(Color.black.opacity(0.7)).frame(width: 3, height: 6)
+                Capsule().fill(Color.black.opacity(0.7)).frame(width: 3, height: 6)
+            }
+        }
+        .opacity(selected ? 1 : 0.55)
+        .overlay(Capsule().stroke(Theme.lime, lineWidth: selected ? 1.5 : 0).padding(-2))
+    }
+}
+
+// MARK: - Bits
+
+struct IconButton: View {
+    var system: String
+    var help: String
+    var action: () -> Void
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: system).font(.system(size: 14, weight: .semibold)).foregroundStyle(Theme.grey)
+                .frame(width: 26, height: 26).contentShape(Rectangle())
+        }.buttonStyle(.plain).help(help)
+    }
+}
+
+/// Plain-SwiftUI spinner (ProgressView is AppKit-backed and cannot be drawn by ImageRenderer).
+struct Spinner: View {
+    var size: CGFloat = 16
+    @State private var spin = false
+    var body: some View {
+        Circle().trim(from: 0, to: 0.7).stroke(Theme.lime, style: StrokeStyle(lineWidth: 2, lineCap: .round))
+            .frame(width: size - 2, height: size - 2).rotationEffect(.degrees(spin ? 360 : 0)).frame(width: size, height: size)
+            .onAppear { withAnimation(.linear(duration: 0.9).repeatForever(autoreverses: false)) { spin = true } }
+    }
+}
+
+struct Pill: View {
+    var text: String
+    var fill: Color
+    var fg: Color = .black
+    var body: some View {
+        Text(verbatim: text).font(.system(size: 13, weight: .bold)).foregroundStyle(fg)
+            .padding(.horizontal, 12).padding(.vertical, 6).background(Capsule().fill(fill))
+    }
+}
+
+// MARK: - Header
+
+struct HeaderBar: View {
+    @ObservedObject var model: HuddleModel
+    var body: some View {
+        HStack(spacing: 8) {
+            Circle().fill(model.state.connection.isConnected ? Theme.lime : Theme.dim).frame(width: 9, height: 9)
+            Text(verbatim: "Agent Huddle").font(.system(size: 20, weight: .bold)).foregroundStyle(.white)
+            Text(verbatim: "\(model.state.count)").font(.system(size: 17, weight: .semibold)).foregroundStyle(Theme.grey)
+            Spacer()
+            IconButton(system: model.muted ? "speaker.slash" : "speaker.wave.2", help: model.muted ? "Unmute" : "Mute") { model.toggleMute() }
+            IconButton(system: model.collapsed ? "chevron.down" : "chevron.up", help: model.collapsed ? "Expand" : "Collapse") { model.toggleCollapsed() }
+            IconButton(system: "xmark", help: "Hide Agent Huddle") { model.hideWidget() }
+        }
+    }
+}
+
+struct DetailTopBar: View {
+    @ObservedObject var model: HuddleModel
+    var session: Session
+    var body: some View {
+        HStack(spacing: 8) {
+            IconButton(system: "chevron.left", help: "Back") { model.back() }
+            BuddyPill(index: session.buddy, selected: true)
+            Spacer()
+            IconButton(system: "arrow.up.forward.square", help: "Open in T3 Code") { Task { await model.jump(session: session) } }
+            IconButton(system: model.muted ? "speaker.slash" : "speaker.wave.2", help: "Mute") { model.toggleMute() }
+            IconButton(system: model.collapsed ? "chevron.down" : "chevron.up", help: "Collapse") { model.toggleCollapsed() }
+            IconButton(system: "xmark", help: "Hide Agent Huddle") { model.hideWidget() }
+        }
+    }
+}
+
+// MARK: - Connection banner
+
+struct ConnectionBanner: View {
+    @ObservedObject var model: HuddleModel
+    @State private var token = ""
+    @State private var entering = false
+    var body: some View {
+        if let text = model.state.connection.headline, model.state.connection != .connected {
+            VStack(alignment: .leading, spacing: 8) {
+                if model.state.connection != .unauthorized {
+                    Text(verbatim: text).font(.system(size: 14, weight: .semibold)).foregroundStyle(Theme.grey)
+                }
+                if model.state.connection == .unauthorized {
+                    if model.signingIn {
+                        HStack(spacing: 8) {
+                            Spinner(size: 14)
+                            Text(verbatim: "Approve Agent Huddle in your browser…").font(.system(size: 13)).foregroundStyle(Theme.grey)
+                            Spacer()
+                            Button("Cancel") { model.cancelSignIn() }.buttonStyle(.plain).foregroundStyle(Theme.lime).font(.system(size: 13, weight: .semibold))
+                        }
+                    } else if entering {
+                        HStack {
+                            SecureField("Paste scoped token", text: $token).textFieldStyle(.roundedBorder)
+                            Button("Save") { let t = token; token = ""; entering = false; Task { await model.submitToken(t) } }
+                        }
+                        Text(verbatim: "Stored in the macOS Keychain only.").font(.system(size: 11)).foregroundStyle(Theme.dim)
+                    } else {
+                        Button { model.signIn() } label: { Pill(text: "Connect to T3 Code", fill: Theme.lime) }.buttonStyle(.plain)
+                        Button { entering = true } label: { Text(verbatim: "or paste a token").font(.system(size: 11)).foregroundStyle(Theme.dim) }.buttonStyle(.plain)
+                    }
+                    if let note = model.connectNote {
+                        Text(verbatim: note).font(.system(size: 12)).foregroundStyle(Theme.red).fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading).padding(12)
+            .background(RoundedRectangle(cornerRadius: 12).fill(Theme.card))
+        }
+    }
+}
+
+// MARK: - Rows
+
+struct SessionRow: View {
+    @ObservedObject var model: HuddleModel
+    var session: Session
+    var showsPanels = true
+    @State private var hovering = false
+
+    var body: some View {
+        let armed = model.armedCloseID == session.threadId
+        VStack(spacing: 6) {
+            HStack(alignment: .top, spacing: 12) {
+                BuddyView(index: session.buddy).padding(.top, 2)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(verbatim: session.title).font(.system(size: 17, weight: .bold)).foregroundStyle(.white).lineLimit(1)
+                    Text(verbatim: session.statusLine)
+                        .font(.system(size: 14, weight: session.needsAttention ? .semibold : .regular))
+                        .foregroundStyle(session.needsAttention ? Theme.lime : Theme.grey).lineLimit(1)
+                    InfoLine(model: model, session: session)
+                }
+                VStack(spacing: 6) {
+                    IconButton(system: "arrow.up.forward.square", help: "Open in T3 Code") { Task { await model.jump(session: session) } }
+                    if armed {
+                        Button { model.closeTapped(session.threadId) } label: { Pill(text: "Close", fill: Theme.red, fg: .white) }.buttonStyle(.plain)
+                    } else {
+                        IconButton(system: "xmark", help: "Close") { model.closeTapped(session.threadId) }
+                    }
+                }
+            }
+            .contentShape(Rectangle())
+            .onTapGesture { model.openDetail(session.threadId) }
+
+            if showsPanels { AttentionPanels(model: model, session: session) }
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.horizontal, 12).padding(.vertical, 10)
+        .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Theme.card))
+        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous)
+            .stroke(Theme.lime, lineWidth: (hovering || session.needsAttention) ? 1.5 : 0))
+        .onHover { hovering = $0 }
+    }
+}
+
+/// Section label shown when threads come from more than one T3 environment (this Mac + linked ones).
+struct EnvironmentHeader: View {
+    var label: String
+    var count: Int
+    var body: some View {
+        HStack(spacing: 6) {
+            Text(verbatim: label.uppercased()).font(.system(size: 11, weight: .heavy)).foregroundStyle(Theme.grey)
+            Text(verbatim: "\(count)").font(.system(size: 11, weight: .semibold)).foregroundStyle(Theme.dim)
+            Rectangle().fill(Color.white.opacity(0.08)).frame(height: 1)
+        }
+        .padding(.top, 6).padding(.horizontal, 4)
+    }
+}
+
+struct AttentionPanels: View {
+    @ObservedObject var model: HuddleModel
+    var session: Session
+    var body: some View {
+        if session.permission != nil { PermissionPanel(model: model, session: session) }
+        if let q = session.question { QuestionPanel(model: model, session: session, question: q) }
+        if let secret = session.secretPrompt { SecretPanel(model: model, session: session, prompt: secret) }
+    }
+}
+
+/// The agent asked for a secret. Only T3 takes it: this panel says so and jumps there. It never has a field for the value.
+struct SecretPanel: View {
+    @ObservedObject var model: HuddleModel
+    var session: Session
+    var prompt: SecretPrompt
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(verbatim: "SECRET").font(.system(size: 12, weight: .heavy)).foregroundStyle(.black)
+                .padding(.horizontal, 8).padding(.vertical, 3).background(RoundedRectangle(cornerRadius: 5).fill(Theme.lime))
+            Text(verbatim: prompt.label).font(.system(size: 15, weight: .bold)).foregroundStyle(.white).fixedSize(horizontal: false, vertical: true)
+            Text(verbatim: "Enter it in T3 Code. Agent Huddle never asks for or keeps a secret.")
+                .font(.system(size: 12.5)).foregroundStyle(Theme.grey).fixedSize(horizontal: false, vertical: true)
+            Button { Task { await model.jump(session: session) } } label: { Pill(text: "Enter it in T3 Code", fill: Theme.lime) }.buttonStyle(.plain)
+        }
+        .padding(12).frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 10).fill(Theme.cardRaised))
+    }
+}
+
+/// Show it and jump. Allow / Deny exist only when the user opted in to inline approvals (SPEC §9.4, Q1); off by default.
+struct PermissionPanel: View {
+    @ObservedObject var model: HuddleModel
+    var session: Session
+    @State private var tappedShowFull = false
+    @State private var armed = false
+    @Environment(\.snapshotMode) private var snapshotMode
+    @Environment(\.expandCommands) private var expandCommands
+    private static let collapsedLines = 3
+    private var showFull: Bool { tappedShowFull || expandCommands }
+
+    var body: some View {
+        let prompt = session.permission
+        let detail = prompt?.detail
+        // A command that could be clipped must be expanded before Allow works: what the user approves is what they saw.
+        let long = detail.map(DisplayText.commandNeedsExpansion) ?? false
+        VStack(alignment: .leading, spacing: 10) {
+            if let tool = prompt?.tool {
+                Text(verbatim: tool.uppercased()).font(.system(size: 12, weight: .heavy)).foregroundStyle(.black)
+                    .padding(.horizontal, 8).padding(.vertical, 3).background(RoundedRectangle(cornerRadius: 5).fill(Theme.lime))
+            }
+            if let detail {
+                Text(verbatim: DisplayText.clean(detail, allowNewlines: true)).font(.system(size: 13, design: .monospaced)).foregroundStyle(.white)
+                    .lineLimit(showFull || !long ? nil : Self.collapsedLines).truncationMode(.tail)
+                    .frame(maxWidth: .infinity, alignment: .leading).fixedSize(horizontal: false, vertical: true)
+                if long {
+                    Button { tappedShowFull.toggle() } label: {
+                        Text(verbatim: showFull ? "Show less" : "Show full command").font(.system(size: 12, weight: .semibold)).foregroundStyle(Theme.grey)
+                    }.buttonStyle(.plain)
+                }
+            } else {
+                Text(verbatim: "Waiting for approval in T3 Code").font(.system(size: 13)).foregroundStyle(Theme.grey)
+            }
+            ApprovalButtons(model: model, session: session, commandVisibleInFull: !long || showFull, armed: armed || snapshotMode)   // opt-in; empty unless inline approvals are on (ApprovalSetup.swift)
+            Button { Task { await model.jump(session: session) } } label: { Pill(text: "Review in T3 Code", fill: Theme.lime) }.buttonStyle(.plain)
+        }
+        .padding(12).frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 10).fill(Theme.cardRaised))
+        // A different request under an open row starts collapsed and unarmed again, so an expansion or a click that belonged to
+        // the previous request cannot carry over.
+        .task(id: prompt?.requestId ?? prompt?.summary) {
+            tappedShowFull = false
+            armed = false
+            try? await Task.sleep(nanoseconds: UInt64(ApprovalGate.armDelay * 1_000_000_000))
+            if !Task.isCancelled { armed = true }
+        }
+    }
+}
+
+struct QuestionPanel: View {
+    @ObservedObject var model: HuddleModel
+    var session: Session
+    var question: Question
+    var body: some View {
+        let selected = model.selections[question.requestId]
+        let ui = model.questionStates[question.requestId] ?? .pending
+        VStack(alignment: .leading, spacing: 10) {
+            if let tag = question.tag {
+                Text(verbatim: tag.uppercased()).font(.system(size: 12, weight: .heavy)).foregroundStyle(.black)
+                    .padding(.horizontal, 8).padding(.vertical, 3).background(RoundedRectangle(cornerRadius: 5).fill(Theme.lime))
+            }
+            Text(verbatim: question.prompt).font(.system(size: 17, weight: .bold)).foregroundStyle(.white)
+                .fixedSize(horizontal: false, vertical: true)
+            if question.answerableInWidget {
+                ForEach(question.options, id: \.self) { opt in
+                    let on = selected == opt.label
+                    Button { model.select(option: opt.label, for: question) } label: {
+                        HStack(spacing: 10) {
+                            Circle().fill(on ? Theme.lime : Color.clear).frame(width: 9, height: 9)
+                                .overlay(Circle().stroke(on ? Theme.lime : Theme.dim, lineWidth: 1.5))
+                            Text(verbatim: opt.label).font(.system(size: 16, weight: .medium)).foregroundStyle(.white)
+                            Spacer()
+                        }
+                        .padding(.horizontal, 10).padding(.vertical, 8)
+                        .background(RoundedRectangle(cornerRadius: 8).fill(Color.white.opacity(0.06)))
+                        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Theme.lime, lineWidth: on ? 1.5 : 0))
+                    }.buttonStyle(.plain)
+                }
+            }
+            if case .error(let msg) = ui {
+                Text(verbatim: msg).font(.system(size: 12)).foregroundStyle(Theme.red).lineLimit(2)
+            }
+            HStack(spacing: 8) {
+                if question.answerableInWidget {
+                    Button { Task { await model.sendAnswer(threadId: session.threadId) } } label: {
+                        Pill(text: ui == .sending ? "Sending…" : "Send", fill: selected == nil ? Theme.dim : Theme.lime)
+                    }
+                    .buttonStyle(.plain).disabled(selected == nil || ui == .sending)
+                }
+                Button { Task { await model.jump(session: session) } } label: {
+                    Pill(text: "Type in T3 Code", fill: Color.white.opacity(0.12), fg: .white)
+                }.buttonStyle(.plain)
+            }
+        }
+        .padding(12).frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 10).fill(Theme.cardRaised))
+    }
+}
+
+// MARK: - Detail
+
+struct DetailView: View {
+    @ObservedObject var model: HuddleModel
+    var session: Session
+    var body: some View {
+        VStack(spacing: 10) {
+            DetailTopBar(model: model, session: session)
+            VStack(spacing: 10) {
+                HStack(alignment: .top, spacing: 12) {
+                    BuddyView(index: session.buddy, size: 52)
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(verbatim: session.title).font(.system(size: 19, weight: .bold)).foregroundStyle(.white).lineLimit(1)
+                        Text(verbatim: session.statusLine).font(.system(size: 14, weight: session.needsAttention ? .semibold : .regular))
+                            .foregroundStyle(session.needsAttention ? Theme.lime : Theme.grey).lineLimit(1)
+                    }
+                    Spacer(minLength: 0)
+                }
+                AttentionPanels(model: model, session: session)
+                DetailInfo(model: model, session: session)
+                Divider().overlay(Color.white.opacity(0.08))
+                if session.steps.isEmpty {
+                    Text(verbatim: "No steps yet").font(.system(size: 13)).foregroundStyle(Theme.dim).frame(maxWidth: .infinity, alignment: .leading)
+                } else {
+                    MaybeScroll {
+                        VStack(alignment: .leading, spacing: 4) { ForEach(session.steps) { ExpandableStepRow(model: model, session: session, step: $0) } }
+                    }
+                }
+            }
+            .padding(12).background(RoundedRectangle(cornerRadius: 14).fill(Theme.card))
+        }
+    }
+}
+
+// MARK: - Root
+
+struct HuddleRootView: View {
+    @ObservedObject var model: HuddleModel
+    var body: some View {
+        VStack(spacing: 10) {
+            if let session = model.selected, !model.collapsed {
+                DetailView(model: model, session: session)
+            } else {
+                HeaderBar(model: model)
+                if !model.collapsed {
+                    ConnectionBanner(model: model)
+                    if model.sessions.isEmpty {
+                        if model.state.connection.isConnected {
+                            Text(verbatim: "No active threads").font(.system(size: 14)).foregroundStyle(Theme.grey).padding(.vertical, 8)
+                        }
+                    } else {
+                        MaybeScroll {
+                            let groups = model.groups
+                            VStack(spacing: 8) {
+                                ForEach(groups) { g in
+                                    if groups.count > 1 { EnvironmentHeader(label: g.label, count: g.sessions.count) }
+                                    ForEach(g.sessions) { SessionRow(model: model, session: $0) }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            if let toast = model.toast {
+                Text(verbatim: toast).font(.system(size: 13, weight: .semibold)).foregroundStyle(.black)
+                    .padding(.horizontal, 12).padding(.vertical, 7).background(Capsule().fill(Theme.lime))
+            }
+        }
+        .padding(14)
+        .frame(width: Theme.width)
+        .frame(maxHeight: .infinity, alignment: .top)
+        .background(RoundedRectangle(cornerRadius: 20, style: .continuous).fill(Theme.panel))
+        .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).stroke(Color.white.opacity(0.08), lineWidth: 1))
+        .preferredColorScheme(.dark)
+    }
+}

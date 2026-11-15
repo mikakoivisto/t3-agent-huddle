@@ -1,0 +1,8 @@
+{"thread":{"threadId":"thr_a","status":"running","pendingRequestCount":0,"activeRunId":"run_1"},
+ "items":[
+  {"position":0,"itemId":"i0","type":"command_execution","status":"completed","text":"$ cat notes.md\nhello"},
+  {"position":1,"itemId":"i1","type":"reasoning","status":"completed","text":"secret thoughts"},
+  {"position":2,"itemId":"i2","type":"dynamic_tool","status":"completed","title":"Write style-sheet.md","text":""},
+  {"position":3,"itemId":"i3","type":"dynamic_tool","status":"completed","title":"Read RELEASES.md","text":""},
+  {"position":4,"itemId":"i4","type":"command_execution","status":"running","text":"$ node scripts/render-notes.js --format pdf\nrendering page 95/139…"}
+ ],"hasMore":false}
