@@ -13,7 +13,7 @@ T3's MCP surface cannot decide an approval (`t3_pending_request` handles user qu
 
 ## Behaviour as built
 
-### Setup (menu-bar item **Inline approvals…**, "This Mac" row, **Set up…**)
+### Setup (Settings → Machines, this Mac's row, **Approve commands from the panel** → **Turn on…**, in place)
 
 1. The window shows the command to run in a terminal on this Mac, with a **Copy** button:
 

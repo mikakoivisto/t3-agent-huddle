@@ -6,7 +6,7 @@ Needs Xcode (Swift 6.x) on macOS 14+. Nothing global is installed; everything st
 
 ```sh
 swift build                 # or: open Package.swift in Xcode
-swift test                  # 272 tests; fake server on an ephemeral 127.0.0.1 port; never touches ~/.t3
+swift test                  # 278 tests; fake server on an ephemeral 127.0.0.1 port; never touches ~/.t3
 ```
 
 ### Fake-server demo (no T3 needed)
@@ -58,8 +58,8 @@ The app reads exactly one T3 file, `~/.t3/userdata/server-runtime.json` (host/po
 ```
 Sources/HuddleCore   models, tolerant JSON, reducer (Store.swift), discovery, MCP client, poller/model, security
 Sources/FakeT3       loopback HTTP server + fake T3 tools + synthetic scenarios (tests and demos; the module is linked into the app binary, and only debug builds can start it)
-Sources/AgentHuddle  SwiftUI views, NSPanel, menu-bar item, Inline approvals window, About, snapshot + demo recorder
+Sources/AgentHuddle  SwiftUI views, NSPanel, menu-bar item, Settings window, About, snapshot + demo recorder
 Sources/fake-t3      standalone fake server
 Sources/huddle-probe live-check tool (scripts/live-check.sh)
-Tests/               272 tests, §11 layers
+Tests/               278 tests, §11 layers
 ```

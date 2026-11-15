@@ -4,7 +4,7 @@ Optional and off by default. Without it a permission request shows the command a
 
 ## Threads on this Mac
 
-Turn it on from the menu bar: **Machines…**, then **Set up…** on the Allow / Deny line of a machine's row (it opens the Inline approvals window). One window lists this Mac and every linked machine with its own state (On, Off, or Needs re-pair) and sets each one up in its row.
+Turn it on from the menu bar: **Settings… → Machines**, then **Turn on…** on a machine's **Approve commands from the panel** line. The setup opens right there in the row; each machine has its own state (On, Off, or Needs re-pairing).
 
 1. In a terminal run `t3 auth pairing create --scope orchestration:read --scope orchestration:operate --label "Agent Huddle approvals" --ttl 10m` (the app's dialog shows it, with a **Copy command** button; if `t3` is not on your PATH, use `~/.t3/bin/t3`). Paste the code it prints into the dialog.
 2. Agent Huddle trades the code for a session on T3's own login endpoint (`POST /oauth/token`) and keeps that session token in the Keychain, in a field of its own, separate from the MCP token. The pairing code is single use and is not stored.
@@ -27,7 +27,7 @@ Turn it on from the menu bar: **Machines…**, then **Set up…** on the Allow /
 - The machine is already linked (see [Show threads from other machines](other-machines.md) below), so its threads appear.
 - On **that machine**, T3 is reachable over https. With Tailscale: `tailscale serve --bg 3773` there. The certificate must be a normal, trusted one; Agent Huddle uses the system's trust and has no way to skip a check.
 
-**Set up** (**Machines…**, then **Set up…** on the machine's Allow / Deny line; a linked machine can have several addresses, and each is checked against the machine you linked before it is offered)
+**Set up** (**Settings… → Machines**, then **Turn on…** on the machine's "Approve commands from the panel" line; a linked machine can have several addresses, and each is checked against the machine you linked before it is offered)
 
 1. Pick the machine.
 2. **Address.** It must be the machine's name, not an IP address (a certificate vouches for a name). Agent Huddle can find it for you: **Find address…** asks for a one-time, read-only pairing code made on **this** Mac (`t3 auth pairing create --scope orchestration:read --scope access:read --label "Agent Huddle discovery" --ttl 10m`). T3's normal connection does not share linked machines' addresses; this code can read them through `peerLinks.list` (`access:read` covers only that and the list of sessions, no credentials, nothing that can change anything). It is used once and thrown away. Or skip it and type the https address yourself, like `https://mac-mini.tailnet.ts.net`.
@@ -38,7 +38,7 @@ Turn it on from the menu bar: **Machines…**, then **Set up…** on the Allow /
 
 **What stays the same:** explicit click, no default button, disabled in Read-only mode, only a complete `waiting` request, re-read from T3 right before sending, the exact command shown as plain text. The address is never taken from thread content: only from what discovery returned or what you typed.
 
-**For a thread on a machine with no credential** the panel says so by name ("Inline approvals aren't set up for Studio Mac…") and **Review in T3 Code** still works. This hint only appears once you have turned some inline approvals on; with everything off the panel is unchanged.
+**For a thread on a machine with no credential** the panel says so by name ("Approving commands from the panel isn't set up for Studio Mac…") and **Review in T3 Code** still works. This hint only appears once you have turned some inline approvals on; with everything off the panel is unchanged.
 
 **Turn off:** the **Turn off** button on the machine's row removes that machine's credential from the Keychain at once. T3 does not let a client revoke its own session, so on **that machine** run `t3 auth session list`, then `t3 auth session revoke <id>` for the session labelled "Agent Huddle approvals". The same goes for the "Agent Huddle discovery" session on this Mac if you used **Find address…**. A rejected credential (revoked or expired) switches off only that machine.
 

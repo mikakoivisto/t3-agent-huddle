@@ -11,6 +11,6 @@
 - **Approvals only for a complete request**: a command over about 400 characters, or a tool input with more than the one field shown, stays on **Review in T3 Code**.
 - **Not notarized; App Sandbox untried** (Q16). The real Keychain is not covered by automated tests (a prompt would hang them); the vault and its migration are tested against an in-memory store and were checked once by hand against the real Keychain.
 - **Terminal output is assumed append-only** (the pane fetches only new characters via `textOffset`); rewritten output would not refresh.
-- **No automated test has clicked the panel or the Inline approvals window.** Hit-testing, hover, focus and resizing were only seen in rendered frames.
+- **No automated test has clicked the panel or the Settings window.** Hit-testing, hover, focus and resizing were only seen in rendered frames.
 - **Polling only** (2 s expanded, 5 s collapsed, 1 s on the open thread; 5 s after a failure and 15 s after three). No push channel found.
 - **Apple silicon only**, macOS 14+.

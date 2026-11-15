@@ -1,6 +1,6 @@
 # 14 — Attention indicator
 
-**Status:** proposed, not built (UI mockup first; built only after the maintainer approves) · **Evidence:** none.
+**Status:** built (menu-bar option A, header pill D–F, bring-back G off by default, plus a Settings window; all approved from mockups) · **Evidence:** `AttentionTests` against the fake; stills 50–55 (`--snapshot`). The menu-bar badge and the floating Settings window have not been looked at by hand.
 
 ## Purpose and user value
 
@@ -27,25 +27,29 @@ The rows in `attention` `.needsPermission`, `.asksQuestion` or `.needsSecret` (s
 
 ### Optional: bring the panel back
 
-- **Menu item "Show the panel when something needs me"** (checkmark, off by default): when the panel was hidden with × and a new thread starts needing you, the panel comes back, without taking focus from the app you are in.
+- **Setting "Show the panel when something needs me"** (Settings → General, off by default): when the panel was hidden with × and a new thread starts needing you, the panel comes back, without taking focus from the app you are in.
 
 ## Security and privacy
 
 - Nothing new is read or sent: the count comes from the state the panel already has. Titles stay plain text (spec 12).
 
-## Acceptance criteria (proposed)
+### Settings window (approved with this spec)
 
-| ID | Statement | Tests |
-|---|---|---|
-| ATT-01 | The menu bar shows the attention count, and only while it is above 0 | new (count logic) |
-| ATT-02 | The header pill shows in expanded, collapsed and detail views, and its click reaches the first row | new + snapshots |
-| ATT-03 | Closed threads do not count; linked-only ones do | new |
-| ATT-04 | With "Show the panel when something needs me" on, a new attention item brings a hidden panel back once, without activating the app | new (model) + by hand |
+Menu bar → **Settings… (⌘,)**: tabs **General** (Attention: Show the panel when something needs me, Chime when something needs me; Answering: Read-only mode, Close also settles finished threads in T3; Window: Keep this window on top) and **Machines** (the former Machines window, spec 15). On top by default. The menu keeps Show / Hide, Settings…, About and Quit. The panel's speaker button and "Chime" are one setting. "Allow / Deny" is now **Approve commands from the panel**, and "Answers & messages" is **Connected**; both are lines in each machine's row, and the approvals setup opens in place (approved from a mockup), so no separate window opens.
+
+## Acceptance criteria
+
+| ID | Statement | Tests | Evidence |
+|---|---|---|---|
+| ATT-01 | The count is the visible questions, permissions and secret requests; the tooltip gives both numbers | `AttentionTests.theCountIsQuestionsPermissionsAndSecretsThatAreShown`, `theTooltipSaysBothNumbers` | Fake |
+| ATT-02 | The header pill opens the list (expands, leaves a detail) and goes to the first thread that needs you, flashing it once; in a detail it points to another one | `thePillOpensTheListAndGoesToTheFirstThreadThatNeedsYou`, `inAThreadThatNeedsYouThePillPointsToAnotherOne`; stills 51–53 | Fake |
+| ATT-03 | Closed threads do not count | `theCountIsQuestionsPermissionsAndSecretsThatAreShown` | Fake |
+| ATT-04 | With "Show the panel when something needs me" on, a new request brings a hidden panel back once; off by default | `aHiddenPanelComesBackForANewRequestOnlyWhenTurnedOn` | Fake; focus not checked by hand |
+| ATT-05 | Settings persist; a preferences file from an earlier version loads with the defaults; Chime and the speaker button are one setting | `settingsPersistAndAnOlderPreferencesFileStillLoads` | Fake |
 
 ## Open questions
 
-- **ATT-Q1:** which menu-bar variant (mockup A, B or C)?
-- **ATT-Q2:** should "Show the panel when something needs me" exist, and be on or off by default?
+- Decided: menu-bar variant A (orange count); "Show the panel when something needs me" exists, off by default.
 
 ## Sources
 

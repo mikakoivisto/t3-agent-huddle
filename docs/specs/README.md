@@ -23,6 +23,7 @@ These specs describe Agent Huddle **as it is built on `main`**, recovered from t
 | 11 | [Packaging and distribution](11-packaging-and-distribution.md) | build script, icon, About, CI and release, ad-hoc signing |
 | 12 | [Cross-cutting rules](12-non-functional-rules.md) | security hard rules, polling, privacy, quality gates |
 | 13 | [Write and send](13-write-and-send.md) | written answers, messages to any thread, steer or queue |
+| 14 | [Attention indicator and Settings](14-attention-indicator.md) | orange count in the menu bar, "need you" pill, bring the panel back, one Settings window |
 | 15 | [Machines](15-machines.md) | connect to T3 on this Mac or any other machine, each through its own MCP; one Machines window |
 
 ## How to read a spec
