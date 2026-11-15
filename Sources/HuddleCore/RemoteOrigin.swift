@@ -131,11 +131,37 @@ public struct VerifiedRemoteOrigin: Equatable, Sendable {
     fileprivate init(origin: ValidatedRemoteOrigin, environmentId: String) { self.origin = origin; self.environmentId = environmentId }
 }
 
+/// What an address says it is, before the user has confirmed it (spec 15). Holds no proof and opens nothing.
+public struct IdentifiedRemote: Equatable, Sendable {
+    public let origin: ValidatedRemoteOrigin
+    public let environmentId: String
+    public let label: String?
+}
+
 /// "Is this address really that machine?" T3 publishes its environment id, unauthenticated, at `/.well-known/t3/environment`
 /// (T3's own peer linking uses the same document: `expectedEnvironmentId`). Nothing secret is sent to find out.
 /// The id is not a secret, so the proof is TLS (system trust, name = the address) plus the id; it is not a signature.
 public enum RemoteIdentity {
     static let path = "/.well-known/t3/environment"
+
+    /// A typed address with no linked machine to compare against (spec 15, adding a machine): what the machine says it is.
+    /// This is NOT a `VerifiedRemoteOrigin`: the user confirms the name first, then `verify` runs against the reported id.
+    public static func identify(origin: ValidatedRemoteOrigin, timeout: TimeInterval = 8) async throws -> IdentifiedRemote {
+        guard let url = origin.httpURL(path: path) else { throw HuddleError.approval("No machine to check.") }
+        var req = URLRequest(url: url)
+        req.setValue("application/json", forHTTPHeaderField: "Accept")   // no Authorization header, ever
+        let session = RemoteSession.make(timeout: timeout)
+        defer { session.invalidateAndCancel() }
+        let data: Data, resp: URLResponse
+        do { (data, resp) = try await BoundedHTTP.data(for: req, session: session, limit: 256 * 1024) }
+        catch { throw HuddleError.approval("Couldn’t reach \(origin.host). Check the address and that its T3 Code is reachable over https.") }
+        let status = (resp as? HTTPURLResponse)?.statusCode ?? 0
+        guard (200..<300).contains(status), let j = try? JSON.parse(data), let id = j["environmentId"].string, !id.isEmpty else {
+            throw HuddleError.approval("\(origin.host) did not answer like T3 Code (HTTP \(status)). Nothing was sent.")
+        }
+        let label = (j["label"].string ?? j["name"].string ?? j["environmentLabel"].string).map { DisplayText.clean($0) }
+        return IdentifiedRemote(origin: origin, environmentId: id, label: label)
+    }
 
     public static func verify(origin: ValidatedRemoteOrigin, expectedEnvironmentId: String, timeout: TimeInterval = 8) async throws -> VerifiedRemoteOrigin {
         guard !expectedEnvironmentId.isEmpty, let url = origin.httpURL(path: path) else { throw HuddleError.approval("No machine to check.") }

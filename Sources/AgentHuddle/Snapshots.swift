@@ -182,6 +182,89 @@ enum Snapshots {
         approvalsWindow(model: cm, "21-inline-approvals-window-setup", data: DemoApprovalsData.overview(open: "studio"), dir)
         c.stop()
 
+        // E. Write and send (spec 13): written answers, the composer, queue / steer, the pop-out editor.
+        let e = await DemoRig.make(prefs: prefs.appendingPathComponent("e"))
+        DemoScenario.start(e.local); DemoScenario.addQuestion(e.local)
+        await e.refresh()
+        let em = e.model
+        save(ids: [DemoScenario.changelog], em, "34-question-write-answer", dir)
+        if let q = em.state.sessions[DemoScenario.changelog]?.question {
+            em.startWritingAnswer(q.requestId)
+            em.composer.drafts[ComposerStore.answerKey(q.requestId)] = "Friendly, but keep each entry to one line and skip the emoji."
+            save(ids: [DemoScenario.changelog], em, "35-question-writing-answer", dir)
+            em.stopWritingAnswer()
+        }
+        // This Mac's threads: a linked machine's rows have no composer (spec 13, capability_denied).
+        em.openComposer(DemoScenario.docs)
+        em.composer.drafts[ComposerStore.messageKey(DemoScenario.docs)] = "Skip the API pages for now. Do the install guide first."
+        save(ids: [DemoScenario.docs], em, "36-message-running-queue", dir)
+        em.toggleSendMode(DemoScenario.docs)
+        save(ids: [DemoScenario.docs], em, "37-message-running-steer", dir)
+        await em.sendMessage(threadId: DemoScenario.docs)
+        save(ids: [DemoScenario.docs], em, "38-message-steered", dir)
+        e.local.update(DemoScenario.docs) { $0.status = "completed" }
+        await e.refresh(2)
+        em.openComposer(DemoScenario.docs)
+        em.composer.drafts[ComposerStore.messageKey(DemoScenario.docs)] = "Now link the new install page from the README."
+        save(ids: [DemoScenario.docs], em, "39-message-finished-send", dir)
+        em.closeComposer(DemoScenario.docs)
+        // The run ended while the user typed a steer: nothing is sent, the composer says so.
+        em.openComposer(DemoScenario.render)
+        em.composer.drafts[ComposerStore.messageKey(DemoScenario.render)] = "Attach the PDF to the release draft when it is done."
+        em.toggleSendMode(DemoScenario.render)
+        e.local.update(DemoScenario.render) { $0.status = "completed" }
+        await em.sendMessage(threadId: DemoScenario.render)
+        save(ids: [DemoScenario.render], em, "40-message-run-finished", dir)
+        em.closeComposer(DemoScenario.render)
+        e.local.update(DemoScenario.render) { $0.status = "running" }
+        await e.refresh(2)
+        em.composer.drafts[ComposerStore.messageKey(DemoScenario.render)] = "When the PDF is done, attach it to the release draft."
+        em.openDetail(DemoScenario.render); await e.refresh()
+        save(em, "41-detail-composer", dir)
+        em.back()
+        em.composer.drafts[ComposerStore.messageKey(DemoScenario.render)] = """
+        When you're done with the notes, run the full release dry run and post the output here.
+
+        If render-notes.js still calls the old node path, switch it to the one from .nvmrc, and don't touch the PDF step until we've upgraded the renderer, it breaks on the new config.
+
+        Also the changelog step should read RELEASES.md, not CHANGELOG.md, that file is gone since the last release.
+        """
+        write(ComposeEditorView(model: em, store: em.composer, threadId: DemoScenario.render, close: {})
+                .environment(\.snapshotMode, true).frame(width: 620, height: 440), "42-pop-out-editor", dir, scale: 2)
+        em.setReadOnly(true)
+        em.openComposer(DemoScenario.render)
+        save(ids: [DemoScenario.render], em, "43-message-read-only", dir)
+        e.stop()
+
+        // F. Machines (spec 15): the Mac mini connected directly, a build box only linked, a studio Mac offline.
+        let (fl, fm) = DemoScenario.makeFakes()
+        try? await fl.start(); try? await fm.start()
+        DemoScenario.start(fl, only: [DemoScenario.docs, DemoScenario.render])
+        DemoScenario.start(fm, only: [DemoScenario.config, DemoScenario.scripts])
+        DemoScenario.addBuildBox(fl)
+        let machines = MemoryMachineCredentialStore([
+            MachineCredential(environmentId: DemoScenario.miniEnv, origin: "http://127.0.0.1:\(fm.port)", token: fm.token, label: DemoScenario.macMini),
+            MachineCredential(environmentId: "env_studio", origin: "http://127.0.0.1:9", token: "x", label: "Studio Mac"),
+        ])
+        let mm = HuddleModel(config: HuddleConfig(source: .fixed(fl.url), tokenStore: MemoryTokenStore(token: fl.token),
+                                                  remotePolicy: .loopbackFixture, machineStore: machines,
+                                                  preferences: PreferencesStore(directory: prefs.appendingPathComponent("f"))))
+        await mm.refresh(); await mm.refresh()
+        save(mm, "44-machines-panel", dir)
+        write(MachinesView(model: mm, flow: AddMachineFlow()).environment(\.snapshotMode, true), "45-machines-window", dir, scale: 2)
+        let flow = AddMachineFlow()
+        flow.start(address: "http://127.0.0.1:\(fm.port)")
+        _ = machines.delete(environmentId: DemoScenario.miniEnv)            // as if the Mac mini were not connected yet
+        let addModel = HuddleModel(config: HuddleConfig(source: .fixed(fl.url), tokenStore: MemoryTokenStore(token: fl.token),
+                                                        remotePolicy: .loopbackFixture, machineStore: MemoryMachineCredentialStore(),
+                                                        preferences: PreferencesStore(directory: prefs.appendingPathComponent("f2"))))
+        await addModel.refresh()
+        flow.found = try? await addModel.identifyMachine(address: flow.address)
+        flow.address = "mikas-mac-mini.tailnet-demo.ts.net"
+        write(AddMachineCard(model: addModel, flow: flow).frame(width: 508).padding(16).background(Theme.panel).environment(\.snapshotMode, true),
+              "46-machines-add", dir, scale: 2)
+        fl.stop(); fm.stop()
+
         // D. Closing, the collapsed header, a jump that cannot be delivered, and T3 going away.
         let d = await DemoRig.make(prefs: prefs.appendingPathComponent("d"))
         DemoScenario.start(d.local); DemoScenario.addWaiters(d.local)

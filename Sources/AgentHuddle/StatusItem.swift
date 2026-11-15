@@ -30,9 +30,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let settle = NSMenuItem(title: "Close also settles finished threads in T3", action: #selector(toggleSettle), keyEquivalent: "")
         settle.target = self; settleItem = settle
         menu.addItem(toggle); menu.addItem(.separator()); menu.addItem(ro); menu.addItem(settle)
-        let approvals = NSMenuItem(title: "Inline approvals…", action: #selector(showApprovals), keyEquivalent: "")
-        approvals.target = self
-        menu.addItem(approvals)
+        let machines = NSMenuItem(title: "Machines…", action: #selector(showMachines), keyEquivalent: "")
+        machines.target = self
+        menu.addItem(machines)
         let about = NSMenuItem(title: "About Agent Huddle", action: #selector(showAbout), keyEquivalent: "")
         about.target = self
         menu.addItem(.separator()); menu.addItem(about); menu.addItem(quit)
@@ -70,6 +70,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     @objc private func toggleSettle() { model.setCloseSettles(!model.closeSettles) }
     @objc private func showApprovals() { ApprovalsWindowController.shared.show(model: model) }
     @objc private func showAbout() { About.show() }
+    @objc private func showMachines() { MachinesWindowController.shared.show(model: model) }
     @objc private func quit() { NSApp.terminate(nil) }
 }
 

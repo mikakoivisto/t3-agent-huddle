@@ -68,16 +68,19 @@ public struct HuddleConfig: Sendable {
     /// Opt-in inline approvals for other machines: one credential per linked environment, and the origin rules for them.
     public var remoteApprovalStore: RemoteCredentialStore
     public var remotePolicy: RemoteOriginPolicy
+    /// Spec 15: MCP sign-ins of other machines connected directly. Empty by default.
+    public var machineStore: MachineCredentialStore
 
     public init(source: Source, tokenStore: TokenStore, approvalStore: TokenStore = MemoryTokenStore(),
                 remoteApprovalStore: RemoteCredentialStore = MemoryRemoteCredentialStore(),
                 remotePolicy: RemoteOriginPolicy = .production,
+                machineStore: MachineCredentialStore = MemoryMachineCredentialStore(),
                 peerVerifier: PeerVerifier = AcceptAnyPeer(),
                 preferences: PreferencesStore? = nil, log: HuddleLog = HuddleLog(),
                 jumper: Jumper = RecordingJumper(), playSound: @escaping @Sendable () -> Void = {},
                 openURL: @escaping @Sendable (URL) -> Void = { _ in }) {
         self.source = source; self.tokenStore = tokenStore; self.approvalStore = approvalStore; self.peerVerifier = peerVerifier
-        self.remoteApprovalStore = remoteApprovalStore; self.remotePolicy = remotePolicy
+        self.remoteApprovalStore = remoteApprovalStore; self.remotePolicy = remotePolicy; self.machineStore = machineStore
         self.preferences = preferences; self.log = log; self.jumper = jumper; self.playSound = playSound; self.openURL = openURL
     }
 }
@@ -95,7 +98,7 @@ public final class HuddleModel: ObservableObject {
     @Published public private(set) var armedCloseID: String?
     @Published public private(set) var toast: String?
     @Published public var selections: [String: String] = [:]          // requestId → option label
-    @Published public private(set) var questionStates: [String: QuestionUIState] = [:]
+    @Published public internal(set) var questionStates: [String: QuestionUIState] = [:]
     @Published public private(set) var readOnly = false
     /// Opt-in (default off): Allow / Deny on permission requests through T3's internal `/ws`. True only while the credential exists.
     @Published public internal(set) var inlineApprovals = false
@@ -123,7 +126,9 @@ public final class HuddleModel: ObservableObject {
     /// Steps the user opened or closed by hand; otherwise a running step is open and the rest are closed.
     @Published public private(set) var stepOpen: [String: Bool] = [:]   // key: threadId|stepId
     public var groups: [HuddleState.EnvGroup] { state.groups(environments: environments) }
-    private var toolNames: Set<String> = []
+    var toolNames: Set<String> = []
+    /// Argument names each tool advertises (`tools/list`), so an optional feature can check the arguments it needs.
+    var toolArguments: [String: Set<String>] = [:]
     private var lastEnvRefresh = Date.distantPast
     private var lastFinishedFetch = Date.distantPast
     private var envBoostUntil = Date.distantPast
@@ -135,6 +140,25 @@ public final class HuddleModel: ObservableObject {
     private var loop: Task<Void, Never>?
     private var lastList = Date.distantPast
     var justAnswered: [String: Date] = [:]
+    /// Drafts of written messages and answers, kept apart so typing does not re-render every row (spec 13).
+    public let composer = ComposerStore()
+    @Published public internal(set) var composingThreadId: String?
+    @Published public internal(set) var writingAnswerFor: String?
+    @Published public internal(set) var sendModes: [String: SendMode] = [:]
+    @Published public internal(set) var composeStates: [String: QuestionUIState] = [:]
+    @Published public internal(set) var composeNotices: [String: String] = [:]
+    @Published public internal(set) var rowToasts: [String: String] = [:]
+    var composeTargets: [String: String] = [:]
+    // Spec 15: machines connected directly, each through its own MCP.
+    @Published public internal(set) var connectedMachineIds: Set<String> = []
+    @Published public internal(set) var machineStatus: [String: MachineStatus] = [:]
+    @Published public internal(set) var machineSignIns: [String: MachineSignInState] = [:]
+    var remoteClients: [String: MCPClient] = [:]
+    var machineTools: [String: (names: Set<String>, args: [String: Set<String>])] = [:]
+    var remoteListCache: [String: (active: [ThreadSummary], finished: [ThreadSummary], at: Date)] = [:]
+    var remoteRetryAfter: [String: Date] = [:]
+    var machineSignInTasks: [String: Task<Void, Never>] = [:]
+    var pendingSends: [String: (fingerprint: String, id: String)] = [:]
     private var prefs: Preferences
 
     public init(config: HuddleConfig) {
@@ -144,11 +168,13 @@ public final class HuddleModel: ObservableObject {
         collapsed = prefs.collapsed; muted = prefs.muted
         readOnly = prefs.readOnly; closeSettles = prefs.closeSettles
         inlineApprovals = config.approvalStore.load() != nil
+        connectedMachineIds = Set(config.machineStore.environmentIds())
     }
 
     public var sessions: [Session] { state.visible }
     public var selected: Session? { selectedThreadID.flatMap { state.sessions[$0] } }
-    public var calledTools: [String] { client?.calledTools ?? [] }
+    /// Every tool called, on this Mac and on each directly connected machine (tests and the "never writes" checks).
+    public var calledTools: [String] { (client?.calledTools ?? []) + remoteClients.keys.sorted().flatMap { remoteClients[$0]?.calledTools ?? [] } }
 
     // MARK: Lifecycle
 
@@ -194,21 +220,31 @@ public final class HuddleModel: ObservableObject {
         questionStates = questionStates.filter { liveRequests.contains($0.key) }
         selections = selections.filter { liveRequests.contains($0.key) }
         if projectNames.count > 300 { projectNames.removeAll(); projectLookups.removeAll() }
+        pruneComposeState(liveThreads: live, liveRequests: liveRequests)
     }
 
     private func refreshOnce(force: Bool) async {
         let listDue = force || Date().timeIntervalSince(lastList) >= PollSchedule.listInterval(
             expanded: !collapsed, consecutiveFailures: consecutiveFailures) - 0.05
+        // This Mac is optional when other machines are connected directly (spec 15): its failure is handled, then the others go on.
+        var local: MCPClient?
+        do { local = try await ensureClient() } catch {
+            handle(error)
+            if connectedMachineIds.isEmpty { return }
+        }
         do {
-            let client = try await ensureClient()
-            if listDue { try await refreshList(client); lastList = Date() }
+            if listDue { try await refreshList(local: local); lastList = Date() }
             if let id = selectedThreadID, state.sessions[id] != nil {
-                try await readThread(client, id: id)
-                try await refreshOutput(client, id: id)
+                do { try await readThread(id: id); try await refreshOutput(id: id) } catch is MachineFailure {}
             }
-            state.connection = .connected
-            consecutiveFailures = 0
-            connectNote = nil
+            if local != nil {
+                state.connection = .connected
+                consecutiveFailures = 0
+                connectNote = nil
+            } else if machineStatus.values.contains(.connected) {
+                consecutiveFailures = 0     // no T3 here is fine when another machine answers: do not back the poll off
+            }
+        } catch is MachineFailure {
         } catch { handle(error) }
     }
 
@@ -228,17 +264,26 @@ public final class HuddleModel: ObservableObject {
         }
     }
 
+    /// Every directly connected machine is in `environments` (named from its sign-in), even with no T3 on this Mac.
+    func mergeConnectedMachines() {
+        var list = environments
+        for id in connectedMachineIds.sorted() where !list.contains(where: { $0.id == id }) {
+            let label = config.machineStore.load(environmentId: id)?.label ?? "Machine \(id.prefix(8))…"
+            list.append(HuddleEnvironment(id: id, label: label, isLocal: false))
+        }
+        if list != environments { environments = list; refreshRemoteApprovalSet() }
+    }
+
     public func projectName(for s: Session) -> String? { projectNames[Self.projectKey(s.environmentId, s.projectId)] }
     private static func projectKey(_ env: String?, _ project: String) -> String { "\(env ?? "")|\(project)" }
 
-    private func refreshProjectNames(_ client: MCPClient) async {
-        let local = environments.first(where: \.isLocal)?.id
+    private func refreshProjectNames() async {
         for s in state.sessions.values where !s.projectId.isEmpty {
             let key = Self.projectKey(s.environmentId, s.projectId)
             guard !projectLookups.contains(key) else { continue }
             projectLookups.insert(key)   // one attempt per project: a failure is not retried every poll
-            let env = (s.environmentId == local) ? nil : s.environmentId
-            if let t = try? await client.projectTitle(projectId: s.projectId, environment: env), t != "No project" { projectNames[key] = DisplayText.clean(t) }
+            if let t = try? await onMachine(s.threadId, { c, env in try await c.projectTitle(projectId: s.projectId, environment: env) }),
+               t != "No project" { projectNames[key] = DisplayText.clean(t) }
         }
     }
 
@@ -249,49 +294,72 @@ public final class HuddleModel: ObservableObject {
         guard let step = state.sessions[threadId]?.steps.first(where: { $0.id == stepId }) else { return }
         let open = !isExpanded(threadId: threadId, step)
         stepOpen["\(threadId)|\(stepId)"] = open
-        guard open, step.kind == .terminal, !step.outputIsFull, let client else { return }
-        if let text = try? await client.readItemText(threadId: threadId, itemId: stepId, offset: 0, environment: env(threadId)) {
+        guard open, step.kind == .terminal, !step.outputIsFull else { return }
+        if let text = try? await onMachine(threadId, { c, env in try await c.readItemText(threadId: threadId, itemId: stepId, offset: 0, environment: env) }) {
             var body = text
             if let nl = body.firstIndex(of: "\n") { body = String(body[body.index(after: nl)...]) } else { body = "" }
             state.setOutput(threadId: threadId, itemId: stepId, output: String(body.suffix(20_000)))
         }
     }
 
-    private func refreshList(_ client: MCPClient) async throws {
-        await refreshEnvironments(client)
+    private func refreshList(local: MCPClient?) async throws {
+        if let local { await refreshEnvironments(local) }
+        mergeConnectedMachines()
         let before = state.sessions
         let attentionBefore = Set(before.values.filter(\.needsAttention).map(\.threadId))
+        let localId = environments.first(where: \.isLocal)?.id
+        let direct = connectedMachineIds.subtracting(localId.map { [$0] } ?? [])
 
-        let remote = environments.filter { !$0.isLocal }
-        var active = try await client.listThreads(statuses: T3Status.activeStatuses, limit: 100)
-        for r in remote {   // a linked environment failing (offline, capability_denied) never breaks the local list
-            if let rows = try? await client.listThreads(statuses: T3Status.activeStatuses, limit: 100, environment: r.id) { active += rows }
+        // This Mac, and machines it only links to (read through this Mac's T3), skipping any connected directly.
+        var active: [ThreadSummary] = []
+        var linked: [HuddleEnvironment] = []
+        if let local {
+            linked = environments.filter { !$0.isLocal && !direct.contains($0.id) }
+            active = try await local.listThreads(statuses: T3Status.activeStatuses, limit: 100)
+            for r in linked {   // a linked environment failing (offline, capability_denied) never breaks the local list
+                if let rows = try? await local.listThreads(statuses: T3Status.activeStatuses, limit: 100, environment: r.id) { active += rows }
+            }
+        }
+        // Machines connected directly, side by side. A failing one keeps its last list for a short while.
+        var directFinished: [ThreadSummary] = []
+        var directExhaustive = true
+        for (id, result) in await fetchDirectLists(direct) {
+            switch result {
+            case .success(let lists):
+                remoteListCache[id] = (lists.active, lists.finished, Date())
+                active += lists.active; directFinished += lists.finished; directExhaustive = directExhaustive && lists.finishedIsLast
+            case .failure:
+                if let c = remoteListCache[id], Date().timeIntervalSince(c.at) < 30 { active += c.active; directFinished += c.finished }
+                directExhaustive = false
+            }
         }
         state.applyActive(active)
         if state.sessions.values.contains(where: { !$0.t3Status.isActive }) || Date().timeIntervalSince(lastFinishedFetch) > 10 {
             lastFinishedFetch = Date()
-            var finished: [ThreadSummary] = []
-            var exhaustive = true
-            let page = try await client.listThreadsPage(statuses: T3Status.finishedStatuses, settled: false, limit: 25)
-            finished += page.threads; exhaustive = page.isLast
-            for r in remote {
-                if let p = try? await client.listThreadsPage(statuses: T3Status.finishedStatuses, settled: false, limit: 25, environment: r.id) {
-                    finished += p.threads; exhaustive = exhaustive && p.isLast
-                } else { exhaustive = false }
+            var finished = directFinished
+            var exhaustive = directExhaustive
+            if let local {
+                let page = try await local.listThreadsPage(statuses: T3Status.finishedStatuses, settled: false, limit: 25)
+                finished += page.threads; exhaustive = exhaustive && page.isLast
+                for r in linked {
+                    if let p = try? await local.listThreadsPage(statuses: T3Status.finishedStatuses, settled: false, limit: 25, environment: r.id) {
+                        finished += p.threads; exhaustive = exhaustive && p.isLast
+                    } else { exhaustive = false }
+                }
             }
             state.applyFinished(finished, exhaustive: exhaustive)
         }
-        await refreshProjectNames(client)
+        await refreshProjectNames()
         for s in state.sessions.values {
             let p = before[s.threadId]
             // A pending request whose item we have not seen as `waiting` yet is re-read every poll: T3 can flip an item's
             // status without touching the thread's updatedAt or itemCount.
             let approvalUnsettled = (s.pendingRequestCount > 0 && s.approvalRequestId == nil) || s.secretPrompt != nil
             if p == nil || p!.t3Status != s.t3Status || p!.updatedAt != s.updatedAt || p!.itemCount != s.itemCount || approvalUnsettled {
-                try await readThread(client, id: s.threadId)
+                do { try await readThread(id: s.threadId) } catch is MachineFailure {}
             }
         }
-        for s in state.sessions.values { try await checkPending(client, id: s.threadId) }
+        for s in state.sessions.values { do { try await checkPending(id: s.threadId) } catch is MachineFailure {} }
 
         let newlyNeeding = state.sessions.values.filter { $0.needsAttention && !attentionBefore.contains($0.threadId) }
         if !newlyNeeding.isEmpty && !muted { config.playSound() }
@@ -299,13 +367,13 @@ public final class HuddleModel: ObservableObject {
         if let id = selectedThreadID, state.sessions[id] == nil { selectedThreadID = nil }
     }
 
-    func readThread(_ client: MCPClient, id: String) async throws {
+    func readThread(id: String) async throws {
         var restarted = false
         for _ in 0..<40 {   // first load of a long run pages from its top; later polls are incremental
             let last = state.sessions[id]?.lastPosition ?? -1
             // Re-read a few positions back so status changes on the newest items are caught (afterPosition must be ≥ 0).
             let after: Int? = last - 3 >= 0 ? last - 3 : nil
-            let read = try await client.readActivity(threadId: id, afterPosition: after, environment: env(id))
+            let read = try await onMachine(id) { c, env in try await c.readActivity(threadId: id, afterPosition: after, environment: env) }
             if state.noteRun(threadId: id, latestRunId: read.latestRunId), !restarted {   // new run: start over
                 restarted = true
                 outputCaches = outputCaches.filter { !$0.key.hasPrefix("\(id)|") }       // the old run's output must not leak into the new one
@@ -317,7 +385,7 @@ public final class HuddleModel: ObservableObject {
         }
     }
 
-    private func checkPending(_ client: MCPClient, id: String) async throws {
+    private func checkPending(id: String) async throws {
         guard let s = state.sessions[id] else { return }
         guard s.t3Status == .waiting || s.pendingRequestCount > 0 else {
             if s.question != nil || s.permission != nil { state.clearPending(threadId: id) }
@@ -327,12 +395,14 @@ public final class HuddleModel: ObservableObject {
         var questions: [Question] = []
         var listSucceeded = true
         do {
-            for rid in try await client.pendingRequestIds(threadId: id, environment: env(id)) {
+            for rid in try await onMachine(id, { c, env in try await c.pendingRequestIds(threadId: id, environment: env) }) {
                 // A request we cannot read or decode is still *a question*: show it, answerable only in T3 (Q5).
-                if let q = try? await client.readQuestion(threadId: id, requestId: rid, environment: env(id)) { questions.append(q) }
+                if let q = try? await onMachine(id, { c, env in try await c.readQuestion(threadId: id, requestId: rid, environment: env) }) { questions.append(q) }
                 else { questions.append(Question(requestId: rid, threadId: id, prompt: "Answer needed in T3 Code",
                                                  options: [], answerableInWidget: false)) }
             }
+        } catch let f as MachineFailure {
+            if case .toolFailed = (f.underlying as? HuddleError) { listSucceeded = false } else { throw f }
         } catch let e as HuddleError {
             if case .toolFailed = e { listSucceeded = false } else { throw e }   // unknown ≠ permission
         }
@@ -345,11 +415,12 @@ public final class HuddleModel: ObservableObject {
 
     /// Detail view: keep the *tail* of the newest command's output. Only new characters are fetched
     /// (`textOffset` = what we already consumed), so long output costs one small read per poll, not a refetch.
-    private func refreshOutput(_ client: MCPClient, id: String) async throws {
+    private func refreshOutput(id: String) async throws {
         guard let step = state.sessions[id]?.steps.last(where: { $0.kind == .terminal }) else { return }
         let cacheKey = "\(id)|\(step.id)"   // thread and item together: an item id reused elsewhere must not inherit this output
         var cache = outputCaches[cacheKey] ?? OutputCache()
-        let fresh = try await client.readItemText(threadId: id, itemId: step.id, offset: cache.consumed, environment: env(id))
+        let consumed = cache.consumed
+        let fresh = try await onMachine(id) { c, env in try await c.readItemText(threadId: id, itemId: step.id, offset: consumed, environment: env) }
         if !fresh.isEmpty {
             var chunk = fresh
             if cache.consumed == 0 {                       // first chunk starts with the `$ command` line
@@ -390,6 +461,10 @@ public final class HuddleModel: ObservableObject {
         let tools = try await c.toolsList()
         if let reason = ContractCheck.verify(toolsList: tools) { throw HuddleError.unsupportedServer(reason) }
         toolNames = Set((tools["tools"].array ?? []).compactMap { $0["name"].string })
+        toolArguments = Dictionary((tools["tools"].array ?? []).compactMap { t -> (String, Set<String>)? in
+            guard let n = t["name"].string else { return nil }
+            return (n, Set((t["inputSchema"]["properties"].object ?? [:]).keys))
+        }, uniquingKeysWith: { a, _ in a })
         environments = []
         client = c
         return c
@@ -463,6 +538,38 @@ public final class HuddleModel: ObservableObject {
         }
     }
 
+    /// A token is stored. Read through the Keychain vault, which reads the item once per launch.
+    public var isSignedIn: Bool { config.tokenStore.load() != nil }
+
+    /// Menu → Sign Out of T3 Code (spec 08). Forgets the token on this Mac; T3 keeps the session until the user revokes it.
+    /// Returns false, changing nothing else, when the Keychain refuses the delete.
+    @discardableResult public func signOut() -> Bool {
+        cancelSignIn()
+        guard config.tokenStore.delete() else {
+            connectNote = "The Keychain would not let Agent Huddle remove its sign-in, so it is still signed in."
+            return false
+        }
+        client = nil
+        toolNames = []; toolArguments = [:]
+        if connectedMachineIds.isEmpty {
+            environments = []
+            var fresh = HuddleState()
+            fresh.hiddenIDs = state.hiddenIDs
+            fresh.connection = .unauthorized
+            state = fresh
+            selectedThreadID = nil
+            composingThreadId = nil; writingAnswerFor = nil
+        } else {
+            // Other machines stay: only this Mac's rows go, on the next list.
+            environments = environments.filter { !$0.isLocal }
+            state.connection = .unauthorized
+            Task { await refresh(force: true) }
+        }
+        consecutiveFailures = 0
+        connectNote = "Signed out. T3 still has the session: run `t3 auth session list`, then `t3 auth session revoke <id>` for Agent Huddle."
+        return true
+    }
+
     // MARK: Linking other machines
 
     /// T3's MCP only sees machines the user linked *to this client* (separate from the T3 app's own connections).
@@ -520,7 +627,6 @@ public final class HuddleModel: ObservableObject {
     public func confirmClose(_ id: String) {
         armedCloseID = nil
         let session = state.sessions[id]
-        let environmentID = env(id)
         state.hide(id)
         if selectedThreadID == id { selectedThreadID = nil }
         // Bounded: ids of threads no longer shown go first when there are very many (a hostile server cannot grow the file).
@@ -528,8 +634,8 @@ public final class HuddleModel: ObservableObject {
         if ids.count > 500 { ids.sort { state.sessions[$0] != nil && state.sessions[$1] == nil }; ids = Array(ids.prefix(500)) }
         prefs.hiddenIDs = ids; persist()
         // Optional setting: settle finished threads in T3 (never an active one; never archive/interrupt).
-        if closeSettles, !readOnly, let s = session, s.t3Status.isFinished, let client {
-            Task { try? await client.settle(threadId: id, environment: environmentID) }
+        if closeSettles, !readOnly, let s = session, s.t3Status.isFinished, !isLinkedOnly(s) {
+            Task { _ = try? await self.onMachine(id, { c, env in try await c.settle(threadId: id, environment: env) }) }
         }
     }
 
@@ -540,19 +646,19 @@ public final class HuddleModel: ObservableObject {
 
     public func sendAnswer(threadId: String) async {
         guard let q = state.sessions[threadId]?.question, q.answerableInWidget,
-              let choice = selections[q.requestId], let client else { return }
+              let choice = selections[q.requestId] else { return }
         guard !readOnly else { questionStates[q.requestId] = .error("Read-only mode — answer in T3 Code"); return }
+        guard let s = state.sessions[threadId], canAnswer(s) else { return }
         questionStates[q.requestId] = .sending
         do {
-            try await client.respond(question: q, selection: choice, environment: env(threadId))
+            try await onMachine(threadId) { c, env in try await c.respond(question: q, selection: choice, environment: env) }
             justAnswered[threadId] = Date()
             questionStates[q.requestId] = nil
             selections[q.requestId] = nil
             state.clearPending(threadId: threadId)
             await refresh(force: true)
         } catch {
-            let msg = (error as? HuddleError)?.description ?? error.localizedDescription
-            questionStates[q.requestId] = .error(String(msg.prefix(120)))
+            questionStates[q.requestId] = .error(Self.oneLine(error))
         }
     }
 

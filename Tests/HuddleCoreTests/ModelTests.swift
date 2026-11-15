@@ -439,11 +439,12 @@ struct LiveShapeTests {
         // Remote calls carry the environment; local calls don't.
         #expect(s.calls.contains { $0.tool == "t3_pending_request" && $0.args["environmentId"].string == "env_remote" })
         #expect(!s.calls.contains { $0.args["threadId"].string == "thr_changelog" && !$0.args["environmentId"].isNull })
-        // Answering a remote question goes to the remote environment.
-        let q = try #require(m.state.sessions["remote1"]?.question)
+        // A machine shown only through the link is read-only: live T3 refuses answers sent that way (spec 15 connects it directly).
+        let remote1 = try #require(m.state.sessions["remote1"])
+        #expect(m.isLinkedOnly(remote1) && !m.canAnswer(remote1) && !m.canMessage(remote1))
+        let q = try #require(remote1.question)
         m.select(option: "B", for: q); await m.sendAnswer(threadId: "remote1")
-        #expect(s.answers.count == 1)
-        #expect(s.calls.last { $0.tool == "t3_pending_request" && $0.args["action"].string == "respond" }?.args["environmentId"].string == "env_remote")
+        #expect(s.answers.isEmpty, "nothing is sent through the link")
     }
 }
 

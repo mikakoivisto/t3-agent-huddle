@@ -14,7 +14,7 @@
 - A thread is checked when its status is `waiting` or its `pendingRequestCount` is above 0.
 - `t3_pending_request {action:"list", threadId}` returns `{requestIds:[…]}`. Each id is read with `{action:"read", threadId, requestId}`.
 - Only the **first** question is used.
-- A request that cannot be read or decoded is still a question: the panel shows "Answer needed in T3 Code" with only the **Type in T3 Code** button.
+- A request that cannot be read or decoded is still a question: the panel shows "Answer needed in T3 Code" and a hint that the row's ↗ opens it.
 - A pending list that fails with a tool error means "unknown": it is never treated as a permission.
 - A question is cleared on the next poll when T3 no longer lists it (answered elsewhere).
 - For 4 seconds after a successful Send, pending detection is skipped for that thread so the answered question does not flicker back.
@@ -23,12 +23,12 @@
 
 - **Row:** lime outline, status line "asks a question", sorted first, chime once when it appears (unless muted).
 - **Panel contents:** optional lime tag (the question's `header`, upper-cased), the question text, one radio row per option, then buttons.
-- **Buttons:** **Send** (lime when an option is selected, grey and disabled when not; "Sending…" while in flight) and **Type in T3 Code** (jumps to the thread, spec 05).
+- **Buttons:** **Send** (lime when an option is selected, grey and disabled when not; "Sending…" while in flight) and **Write answer** (spec 13). **Type in T3 Code** was removed: the row's ↗ opens the thread.
 - **Shown only if answerable:** options and Send appear only when the question is answerable in the widget.
 
 ### Answerable rule
 
-A question is answerable in the widget only if the read gives **at most one question**, it is **not multi-select**, and it has **at least one option**. Anything else (several questions, multi-select, free text, no options) shows the prompt text and **Type in T3 Code** only.
+A question is answerable in the widget only if the read gives **at most one question**, it is **not multi-select**, and it has **at least one option**. A single, not multi-select question with no options can still be answered with **Write answer** (spec 13). Anything else (several questions, multi-select) shows the prompt and "Answer this one in T3 Code: ↗ opens it."
 
 ### Send
 
@@ -58,7 +58,7 @@ The shape is isolated in `QuestionCodec` (`Models.swift`) and in the fake, so on
 ## Security and privacy
 
 - Question text, header and options render as plain text. No links or markdown, so an agent cannot draw a fake button.
-- The answer sent is exactly one of the offered option labels.
+- The answer sent is exactly one of the offered option labels, or exactly the text the user wrote (spec 13).
 - Read-only mode blocks Send locally. It does not reduce the token's scopes (see spec 08).
 - Question content stays in memory.
 
@@ -82,7 +82,7 @@ The shape is isolated in `QuestionCodec` (`Models.swift`) and in the fake, so on
 
 ## Open questions
 
-- **QST-Q1 (owner: maintainer, needs a live pass):** the real question and `answers` shape (SPEC Q5). Create a throwaway thread that asks one question and read it.
+- **QST-Q1 (partly answered 2026-11-15):** a real Claude question (header, two options, single choice) decoded with the assumed shape, and a written answer through `respond` reached the agent word for word (spec 13 live check). A picked option has not been sent live. A thread in a broader runtime mode than the sign-in refuses answers (spec 13).
 - **QST-Q2:** free-text answers and several questions per request are not supported. Is v1 acceptable?
 - **QST-Q3:** does `respond` need `orchestration:operate`, and does the OAuth token have it at the access level the user picks (README advises "approval-required")?
 

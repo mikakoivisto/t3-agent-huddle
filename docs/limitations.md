@@ -1,5 +1,7 @@
 # Limitations
 
+- **No messages to threads on another machine.** T3 refuses a message sent through this Mac to a linked machine's thread, so those rows have no message button; open the thread with ↗.
+- **A thread running in a broader mode than Agent Huddle's sign-in can't be messaged or answered from the panel**: T3 refuses it, and the panel says so. Sign in at the level your threads use, usually Auto ([Install](install.md)); with an Auto sign-in, only full-access threads are out of reach. This also applies to picking a question's option.
 - **Inline Allow / Deny is opt-in and rides on T3's internal `/ws` protocol.** T3's MCP has no approval call, so by default a permission shows the command and **Review in T3 Code**. A T3 update can break the opt-in without notice.
 - **Permission detection** uses T3's `approval_request` item (live); when that item is absent it falls back to the newest unfinished command, an inference.
 - **Jump uses T3's own thread deep link** `t3code://threads/<environmentId>/<threadId>` (found in the desktop bundle's link parser; `t3 app <path>` opens a *new thread*, so it is not used). A linked machine returns its links as markdown, which the app strips. The landing on the right thread has not been observed.

@@ -68,6 +68,7 @@ let options = parseArgs()
 @MainActor func run() {
     let app = NSApplication.shared
     app.setActivationPolicy(.accessory)
+    EditKeys.installMainMenu()
     if let icon = options.iconFile { AppIcon.writePNG(to: icon); exit(0) }
     let log = HuddleLog()
     let sound: @Sendable () -> Void = { NSSound(named: "Glass")?.play() }
@@ -130,6 +131,7 @@ let options = parseArgs()
         config = HuddleConfig(source: .runtimeFile(Discovery(runtimeFile: options.runtimeFile ?? Discovery.defaultRuntimeFile)),
                               tokenStore: KeychainTokenStore(vault: vault, slot: .bearer), approvalStore: KeychainTokenStore(vault: vault, slot: .approvals),
                               remoteApprovalStore: KeychainRemoteCredentialStore(vault: vault),
+                              machineStore: KeychainMachineStore(vault: vault),
                               peerVerifier: BundlePeerVerifier(),
                               preferences: PreferencesStore(directory: options.prefsDir ?? PreferencesStore.defaultDirectory),
                               log: log, jumper: T3Jumper(), playSound: sound,

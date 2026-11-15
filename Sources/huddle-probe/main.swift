@@ -10,6 +10,10 @@ func fail(_ m: String) -> Never { FileHandle.standardError.write(Data((m + "\n")
 
 var access = "approval-required"   // read + operate scopes; never full-access
 var runHuddle = false
+var sendCheck: (steer: String, question: String)?
+var sendRaw: (thread: String, mode: SendMode, environment: String?)?
+var remoteMCP: String?
+var remoteSend: (steer: String, question: String)?
 var remoteCheck: (address: String, environmentId: String)?
 var describe: [String] = []
 var calls: [(String, JSON)] = []
@@ -21,6 +25,17 @@ while let a = it.next() {
     case "--remote":   // live check of the "another machine" path: ADDRESS ENVIRONMENT_ID (see RemoteCheck.swift)
         guard let address = it.next(), let envId = it.next() else { fail("--remote ADDRESS ENVIRONMENT_ID") }
         remoteCheck = (address, envId)
+    case "--send-check":   // spec 13 live check: SEND to these two THROWAWAY threads through the real HuddleModel
+        guard let st = it.next(), let q = it.next() else { fail("--send-check STEER_THREAD_ID QUESTION_THREAD_ID") }
+        sendCheck = (st, q)
+    case "--send-raw":   // one t3_thread_send to THREAD (queue|steer), printing T3's whole answer or error
+        guard let t = it.next(), let m = it.next().flatMap(SendMode.init(rawValue:)) else { fail("--send-raw THREAD queue|steer [ENVIRONMENT_ID]") }
+        sendRaw = (t, m, nil)
+    case "--env": if sendRaw != nil { sendRaw!.environment = it.next() }
+    case "--remote-send":   // with --remote-mcp: steer + queue to STEER, written answer to QUESTION (throwaway threads on that machine)
+        guard let st = it.next(), let q = it.next() else { fail("--remote-send STEER_ID QUESTION_ID") }
+        remoteSend = (st, q)
+    case "--remote-mcp": remoteMCP = it.next()   // spec 15: sign in to a machine's MCP over https (the pairing code is made on THAT machine)
     case "--huddle": runHuddle = true   // run the real HuddleModel against live T3 (read-only) and print what the panel would show
     case "--call":
         guard let name = it.next(), let json = it.next(), let j = try? JSON.parse(json) else { fail("--call TOOL JSON") }
@@ -64,6 +79,49 @@ let opener: @Sendable (URL) -> Void = { url in
             FileHandle.standardError.write(Data("decision(\(tag)) -> HTTP \(status)\n".utf8))   // status only: a server may echo a secret in its body
         }
     }
+}
+
+if let address = remoteMCP {
+    do {
+        let origin = try RemoteOriginPolicy.production.validate(address)
+        let found = try await RemoteIdentity.identify(origin: origin)
+        print("REMOTE identify: \(found.label ?? "-") env=\(found.environmentId.prefix(8))… at \(origin.host)")
+        let verified = try await RemoteIdentity.verify(origin: origin, expectedEnvironmentId: found.environmentId)
+        let ro = try OAuthClient(remote: verified, log: log, opener: opener, timeout: 30)
+        let r = try await ro.authorize()
+        print("REMOTE oauth: ok (token received, expires_in=\(r.expiresIn.map(String.init) ?? "?"))")
+        let rc = try MCPClient(remote: verified, token: r.accessToken, log: log)
+        let rt = try await rc.toolsList()
+        print("REMOTE tools: \((rt["tools"].array ?? []).count), contract check: \(ContractCheck.verify(toolsList: rt) ?? "ok")")
+        let env = try await rc.localEnvironment()
+        print("REMOTE environment: \(env.label) \(env.id.prefix(8))… (matches identify: \(env.id == verified.environmentId))")
+        let threads = try await rc.listThreads(statuses: T3Status.activeStatuses + T3Status.finishedStatuses, limit: 20)
+        print("REMOTE threads listed: \(threads.count)")
+        for (name, args) in calls {
+            print("\n> \(name) \(args.text())")
+            do { print(log.scrub((try await rc.callTool(name, args)).text())) } catch { print(log.scrub("ERROR: \(error)")) }
+        }
+        if let rs = remoteSend {
+            let st = try await rc.threadStatus(threadId: rs.steer)
+            print("REMOTE steer target status: \(st.rawValue)")
+            for (mode, text) in [(SendMode.steer, "REMOTE STEER TEST from Agent Huddle: say 'remote steer received' and keep going."),
+                                 (SendMode.queue, "REMOTE QUEUE TEST from Agent Huddle: reply 'remote queue received'.")] {
+                do { try await rc.sendMessage(threadId: rs.steer, message: text, mode: mode, clientRequestId: UUID().uuidString); print("REMOTE \(mode.rawValue): ok") }
+                catch { print(log.scrub("REMOTE \(mode.rawValue) error: \(error)")) }
+            }
+            var q: Question?
+            for _ in 0..<30 {
+                if let rid = try? await rc.pendingRequestIds(threadId: rs.question).first, let qq = try? await rc.readQuestion(threadId: rs.question, requestId: rid) { q = qq; break }
+                try? await Task.sleep(nanoseconds: 3_000_000_000)
+            }
+            if let q {
+                do { try await rc.respond(question: q, selection: "Blue (written answer over the remote MCP)"); print("REMOTE written answer: ok (options \(q.options.map(\.label)))") }
+                catch { print(log.scrub("REMOTE answer error: \(error)")) }
+            } else { print("REMOTE question: none appeared") }
+        }
+    } catch { print(log.scrub("REMOTE error: \(error)")) }
+    print("\n(probe done)")
+    exit(0)
 }
 
 let oauth = try OAuthClient(mcpEndpoint: endpoint, log: log, opener: opener, timeout: 30)
@@ -114,5 +172,59 @@ if runHuddle {
             print("HUDDLE tools called: \(Set(model.calledTools).sorted())")
         }
     }
+}
+if let r = sendRaw {
+    do {
+        try await client.sendMessage(threadId: r.thread, message: "Agent Huddle live check (send-raw, \(r.mode.rawValue)): ignore this line.",
+                                     mode: r.mode, clientRequestId: UUID().uuidString, environment: r.environment)
+        print("SEND-RAW ok")
+    } catch { print(log.scrub("SEND-RAW error: \(error)")) }
+}
+if let sc = sendCheck {
+    let model: HuddleModel = await MainActor.run {
+        HuddleModel(config: HuddleConfig(source: .fixed(endpoint), tokenStore: MemoryTokenStore(token: result.accessToken), log: log))
+    }
+    await model.refresh()
+    func state(_ id: String) async -> String {
+        await MainActor.run {
+            guard let s = model.state.sessions[id] else { return "not listed" }
+            return "t3=\(s.t3Status.rawValue) canMessage=\(model.canMessage(s)) canSteer=\(model.canSteer(s)) label=\(model.sendLabel(s)) ui=\(String(describing: model.composeStates[id])) toast=\(model.rowToasts[id] ?? "-") notice=\(model.composeNotices[id] ?? "-")"
+        }
+    }
+    print("\nSEND canSendMessages=\(await MainActor.run { model.canSendMessages })")
+    print("SEND steer target before: \(await state(sc.steer))")
+    await MainActor.run {
+        model.openComposer(sc.steer)
+        model.composer.drafts[ComposerStore.messageKey(sc.steer)] = "LIVE STEER TEST from Agent Huddle: as soon as you see this, say 'steer received' and keep going."
+        model.toggleSendMode(sc.steer)
+    }
+    print("SEND steer label=\(await MainActor.run { model.state.sessions[sc.steer].map(model.sendLabel) ?? "-" })")
+    await model.sendMessage(threadId: sc.steer)
+    print("SEND after steer: \(await state(sc.steer))")
+    await MainActor.run {
+        model.openComposer(sc.steer)
+        model.composer.drafts[ComposerStore.messageKey(sc.steer)] = "LIVE QUEUE TEST from Agent Huddle: this was queued; reply 'queue received'."
+    }
+    await model.sendMessage(threadId: sc.steer)
+    print("SEND after queue: \(await state(sc.steer))")
+
+    var asked = false
+    for _ in 0..<30 {
+        await model.refresh()
+        if await MainActor.run(body: { model.state.sessions[sc.question]?.question != nil }) { asked = true; break }
+        try? await Task.sleep(nanoseconds: 3_000_000_000)
+    }
+    if asked {
+        let info: String = await MainActor.run {
+            let q = model.state.sessions[sc.question]!.question!
+            model.startWritingAnswer(q.requestId)
+            model.composer.drafts[ComposerStore.answerKey(q.requestId)] = "Blue (this is a written answer from the Agent Huddle live check)"
+            return "options=\(q.options.map(\.label)) answerable=\(q.answerableInWidget) freeText=\(q.freeTextAnswerable) multi=\(q.multiSelect)"
+        }
+        print("SEND question: \(info)")
+        await model.sendWrittenAnswer(threadId: sc.question)
+        print("SEND after written answer: questionUI=\(await MainActor.run { model.questionStates.map { "\($0.value)" } }) toast=\(await MainActor.run { model.rowToasts[sc.question] ?? "-" })")
+    } else { print("SEND question: none appeared within 90 s") }
+    print("SEND tools called: \(Set(model.calledTools).sorted())")
 }
 print("\n(probe done; access token discarded with the process — revoke the session via scripts/live-check.sh)")

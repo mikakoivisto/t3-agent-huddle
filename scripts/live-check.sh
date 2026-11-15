@@ -2,7 +2,11 @@
 # Live check against the LOCAL T3 (127.0.0.1) using a throwaway pairing code, then clean up everything it created.
 #   scripts/live-check.sh [huddle-probe args…]      e.g.  scripts/live-check.sh --huddle
 # - mints one pairing credential (read+operate, 10 min) and revokes it on exit;
-# - the probe signs in through the advertised OAuth flow (approval = pairing code), makes READ-ONLY calls only;
+# - the probe signs in through the advertised OAuth flow (approval = pairing code) and makes read-only calls, except
+#   `--send-check STEER_ID QUESTION_ID`, which SENDS a steer, a queued message and a written answer to those two threads
+#   (make throwaway ones for it); `--send-raw THREAD queue|steer` sends one message; `--remote-mcp ADDRESS` signs in to
+#   that address's T3 over https (the pairing code is minted HERE, so use this Mac's own address) and `--remote-send STEER QUESTION`
+#   then sends a steer, a queued message and a written answer there;
 # - revokes the OAuth session(s) it created (diff of `t3 auth session list` before/after);
 # - the pairing secret lives in a 0600 temp file and an env var, never argv or a log.
 set -euo pipefail

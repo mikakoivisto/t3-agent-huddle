@@ -25,10 +25,11 @@ In order:
 2. separator
 3. **Read-only mode (no answering):** checkmark; persisted. Blocks Send, Allow, Deny and settle (spec 08).
 4. **Close also settles finished threads in T3:** checkmark; persisted; off by default (spec 01).
-5. **Inline approvals…:** opens the Inline approvals window (specs 06, 07).
-6. separator
-7. **About Agent Huddle:** the standard About panel with the app name, copyright "© 2026 Mika Koivisto — MIT License", a short description ("independent project, not affiliated with or endorsed by T3 Tools") and the full MIT licence text as credits.
-8. **Quit Agent Huddle** (⌘Q).
+5. **Machines…:** opens the Machines window (spec 15): each machine's sign-in and Sign out, its Allow / Deny state (Set up… opens the Inline approvals window, specs 06 and 07), and Add machine.
+6. (removed: "Inline approvals…" and "Sign Out of T3 Code…" moved into Machines…)
+7. separator
+8. **About Agent Huddle:** the standard About panel with the app name, copyright "© 2026 Mika Koivisto — MIT License", a short description ("independent project, not affiliated with or endorsed by T3 Tools") and the full MIT licence text as credits.
+9. **Quit Agent Huddle** (⌘Q).
 
 Checkmarks are refreshed each time the menu opens.
 

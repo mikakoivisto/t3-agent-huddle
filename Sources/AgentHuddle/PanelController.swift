@@ -5,8 +5,54 @@ import HuddleCore
 
 /// Floating, non-activating, all-Spaces panel in the top-right corner (SPEC §9.1).
 final class HuddlePanel: NSPanel {
-    override var canBecomeKey: Bool { true }     // needed for the token paste field only
+    override var canBecomeKey: Bool { true }     // the token paste field and the message composer (spec 13)
     override var canBecomeMain: Bool { false }
+
+    /// The panel can be key while another app stays active, so the menu bar's Edit menu may not see ⌘X / ⌘C / ⌘V / ⌘A / ⌘Z.
+    /// Route them to the focused text view directly.
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        if EditKeys.handle(event) { return true }
+        return super.performKeyEquivalent(with: event)
+    }
+}
+
+/// Standard editing keys for text fields in an accessory app (no visible main menu).
+enum EditKeys {
+    static func handle(_ event: NSEvent) -> Bool {
+        guard event.type == .keyDown else { return false }
+        let mods = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        let key = event.charactersIgnoringModifiers?.lowercased() ?? ""
+        let action: Selector?
+        switch (mods, key) {
+        case (.command, "x"): action = #selector(NSText.cut(_:))
+        case (.command, "c"): action = #selector(NSText.copy(_:))
+        case (.command, "v"): action = #selector(NSText.paste(_:))
+        case (.command, "a"): action = #selector(NSText.selectAll(_:))
+        case (.command, "z"): action = Selector(("undo:"))
+        case ([.command, .shift], "z"): action = Selector(("redo:"))
+        default: action = nil
+        }
+        guard let action else { return false }
+        return NSApp.sendAction(action, to: nil, from: nil)
+    }
+
+    /// A hidden main menu with an Edit menu, so the pop-out editor window gets the same keys and the Services menu works.
+    @MainActor static func installMainMenu() {
+        let main = NSMenu()
+        let appItem = NSMenuItem(); main.addItem(appItem)
+        appItem.submenu = NSMenu()      // no ⌘Q here: quitting is in the menu-bar item, so a stray ⌘Q in a composer cannot drop drafts
+        let editItem = NSMenuItem(); main.addItem(editItem)
+        let edit = NSMenu(title: "Edit"); editItem.submenu = edit
+        edit.addItem(NSMenuItem(title: "Undo", action: Selector(("undo:")), keyEquivalent: "z"))
+        let redo = NSMenuItem(title: "Redo", action: Selector(("redo:")), keyEquivalent: "z"); redo.keyEquivalentModifierMask = [.command, .shift]
+        edit.addItem(redo)
+        edit.addItem(.separator())
+        edit.addItem(NSMenuItem(title: "Cut", action: #selector(NSText.cut(_:)), keyEquivalent: "x"))
+        edit.addItem(NSMenuItem(title: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c"))
+        edit.addItem(NSMenuItem(title: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v"))
+        edit.addItem(NSMenuItem(title: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a"))
+        NSApp.mainMenu = main
+    }
 }
 
 @MainActor
@@ -46,6 +92,14 @@ final class PanelController: NSObject, NSWindowDelegate {
         position()
         model.objectWillChange.sink { [weak self] in
             DispatchQueue.main.async { self?.fit(); self?.syncVisibility() }
+        }.store(in: &bag)
+        // Typing grows the composer's field; drafts live in their own store, so follow it too.
+        model.composer.objectWillChange.sink { [weak self] in
+            DispatchQueue.main.async { self?.fit() }
+        }.store(in: &bag)
+        // Send or Cancel ends editing: the field gives up focus.
+        model.$composingThreadId.combineLatest(model.$writingAnswerFor).sink { [weak self] c, w in
+            if c == nil && w == nil { DispatchQueue.main.async { self?.panel.makeFirstResponder(nil) } }
         }.store(in: &bag)
     }
 

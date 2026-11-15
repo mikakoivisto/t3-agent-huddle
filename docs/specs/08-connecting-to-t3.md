@@ -31,7 +31,7 @@
 5. **Authorize:** open the authorization URL in the default browser with `response_type=code`, `client_id`, `redirect_uri`, `scope`, `state` (16 random bytes), `code_challenge` (S256 of a 48-byte random verifier), `code_challenge_method=S256`, `resource` (the MCP URL).
 6. **Callback checks:** an `error` is shown; `state` must match; if `iss` is present it must equal the issuer; a `code` is required. Wait at most 180 s ("timed out waiting for approval"). **Cancel** ends the wait.
 7. **Exchange:** `POST` the token endpoint with the code and verifier. The access token is registered with the log scrubber, saved to the Keychain, and the client id and port are saved to preferences.
-8. The user approves in T3's page with a pairing code and chooses an access level. README advises a read + operate level such as "approval-required"; read-only cannot answer questions and full access is wider than needed.
+8. The user approves in T3's page with a pairing code and chooses an access level. The install guide advises the level the user's threads run at, usually "auto" (spec 13: T3 refuses answers and messages to a thread in a broader mode than the sign-in); read-only cannot answer or send, and full access only if the threads run that way.
 
 **No refresh grant** is advertised, so the user signs in again when the token expires (about 30 days).
 
@@ -41,6 +41,13 @@
 - **Paste fallback:** "or paste a token" saves a pasted token to the Keychain. A token from `t3 auth session issue` is **rejected** by real T3 (401 on `/mcp`), so this is a fallback only.
 - **On HTTP 401 or 403** from any call: the token is deleted, the state becomes "Connect to T3 Code", and a red note says T3 rejected the token (HTTP 401) and why a CLI token may not work.
 - **Revoke:** `t3 auth session list` and `t3 auth session revoke <id>`.
+
+### Sign out
+
+- **Machines… → Sign out** on this Mac's row (spec 15; formerly the menu item "Sign Out of T3 Code…"). A confirmation says what happens, then the token is deleted from the Keychain vault, the MCP client is dropped, the list is cleared and the panel shows **Connect to T3 Code** again, so a different access level can be chosen on the next sign-in (spec 13).
+- **T3 keeps the session:** a client cannot revoke its own session, so the note under Connect says to run `t3 auth session list` and `t3 auth session revoke <id>` for Agent Huddle.
+- **Untouched:** the inline-approvals logins (their own Turn off), preferences, the OAuth client id (reused next time), drafts in memory.
+- **If the Keychain refuses** the delete, nothing else changes and the note says so.
 
 ### Connection states
 
