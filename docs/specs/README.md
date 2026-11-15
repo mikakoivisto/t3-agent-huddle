@@ -24,6 +24,7 @@ These specs describe Agent Huddle **as it is built on `main`**, recovered from t
 | 12 | [Cross-cutting rules](12-non-functional-rules.md) | security hard rules, polling, privacy, quality gates |
 | 13 | [Write and send](13-write-and-send.md) | written answers, messages to any thread, steer or queue |
 | 14 | [Dictation](14-dictation.md) | **proposed:** dictate into the composer, on-device or a local server |
+| 15 | [Machines](15-machines.md) | **proposed:** connect to T3 on this Mac or any other machine, each through its own MCP; one Machines window |
 
 ## How to read a spec
 
