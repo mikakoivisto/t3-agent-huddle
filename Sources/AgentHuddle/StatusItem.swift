@@ -6,14 +6,13 @@ import HuddleCore
 /// comes back after its × (Q8 default).
 @MainActor
 final class StatusItemController: NSObject, NSMenuDelegate {
-    private var roItem: NSMenuItem?
-    private var settleItem: NSMenuItem?
     private let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
     private let model: HuddleModel
     private var cancellable: AnyCancellable?
     private var timer: Timer?
     private var frame = 0
     private var activeCount = 0
+    private var attentionCount = 0
     private let frames = (0..<4).map { StatusItemController.menuBarIcon(frame: $0) }
     private let idleIcon = StatusItemController.menuBarIcon()
     init(model: HuddleModel) {
@@ -25,14 +24,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         toggle.target = self
         let quit = NSMenuItem(title: "Quit Agent Huddle", action: #selector(quit), keyEquivalent: "q")
         quit.target = self
-        let ro = NSMenuItem(title: "Read-only mode (no answering)", action: #selector(toggleReadOnly), keyEquivalent: "")
-        ro.target = self; roItem = ro
-        let settle = NSMenuItem(title: "Close also settles finished threads in T3", action: #selector(toggleSettle), keyEquivalent: "")
-        settle.target = self; settleItem = settle
-        menu.addItem(toggle); menu.addItem(.separator()); menu.addItem(ro); menu.addItem(settle)
-        let machines = NSMenuItem(title: "Machines…", action: #selector(showMachines), keyEquivalent: "")
-        machines.target = self
-        menu.addItem(machines)
+        // Spec 14: every setting lives in the Settings window; the menu keeps Show / Hide, Settings…, About and Quit.
+        let settings = NSMenuItem(title: "Settings…", action: #selector(showSettings), keyEquivalent: ",")
+        settings.target = self
+        menu.addItem(toggle); menu.addItem(.separator()); menu.addItem(settings)
         let about = NSMenuItem(title: "About Agent Huddle", action: #selector(showAbout), keyEquivalent: "")
         about.target = self
         menu.addItem(.separator()); menu.addItem(about); menu.addItem(quit)
@@ -41,18 +36,29 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         item.button?.imagePosition = .imageLeft
         cancellable = model.$state.sink { [weak self] state in
             let n = state.visible.filter { $0.isWorking }.count
-            MainActor.assumeIsolated { self?.setActive(n) }
+            let a = state.visible.filter(\.needsAttention).count
+            MainActor.assumeIsolated { self?.setActive(n, attention: a) }
         }
     }
-    /// Animates the buddy and shows the count while threads are running; a still icon with no number when none are.
-    private func setActive(_ n: Int) {
-        guard n != activeCount else { return }
-        activeCount = n
-        let title = n > 0 ? " \(n)" : ""
-        item.button?.attributedTitle = NSAttributedString(string: title, attributes: [
-            .font: NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .semibold)])
-        item.button?.toolTip = n > 0 ? "\(n) running" : "Agent Huddle"
-        item.length = n > 0 ? NSStatusItem.variableLength : NSStatusItem.squareLength
+    /// Animates the buddy while threads are running. The number is the working count, or, while something needs the user,
+    /// the attention count in an orange badge (spec 14). A still icon with no number when nothing is running or waiting.
+    private func setActive(_ n: Int, attention: Int) {
+        guard n != activeCount || attention != attentionCount else { return }
+        let animationChanged = (n > 0) != (activeCount > 0)
+        activeCount = n; attentionCount = attention
+        if attention > 0 {
+            let a = NSTextAttachment(); a.image = Self.badge(attention)
+            let t = NSMutableAttributedString(string: " ")
+            t.append(NSAttributedString(attachment: a))
+            item.button?.attributedTitle = t
+        } else {
+            item.button?.attributedTitle = NSAttributedString(string: n > 0 ? " \(n)" : "", attributes: [
+                .font: NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .semibold)])
+        }
+        // From the numbers passed in: `$state` publishes before the model's own properties change.
+        item.button?.toolTip = HuddleModel.tooltip(attention: attention, working: n)
+        item.length = (n > 0 || attention > 0) ? NSStatusItem.variableLength : NSStatusItem.squareLength
+        guard animationChanged || timer == nil else { return }
         timer?.invalidate(); timer = nil
         guard n > 0 else { item.button?.image = idleIcon; return }
         item.button?.image = frames[frame % frames.count]
@@ -66,18 +72,30 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         }
     }
     @objc private func toggle() { model.widgetHidden ? model.showWidget() : model.hideWidget() }
-    @objc private func toggleReadOnly() { model.setReadOnly(!model.readOnly) }
-    @objc private func toggleSettle() { model.setCloseSettles(!model.closeSettles) }
-    @objc private func showApprovals() { ApprovalsWindowController.shared.show(model: model) }
     @objc private func showAbout() { About.show() }
-    @objc private func showMachines() { MachinesWindowController.shared.show(model: model) }
+    @objc private func showSettings() { SettingsWindowController.shared.show(model: model) }
     @objc private func quit() { NSApp.terminate(nil) }
 }
 
 extension StatusItemController {
-    func menuNeedsUpdate(_ menu: NSMenu) {
-        roItem?.state = model.readOnly ? .on : .off
-        settleItem?.state = model.closeSettles ? .on : .off
+    func menuNeedsUpdate(_ menu: NSMenu) {}
+
+    /// The orange attention badge: a capsule with the count, drawn in colour (the robot beside it stays a template image).
+    static func badge(_ n: Int, height: CGFloat = 15) -> NSImage {
+        let text = n > 99 ? "99+" : "\(n)"
+        let font = NSFont.monospacedDigitSystemFont(ofSize: height * 0.72, weight: .heavy)
+        let attrs: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: NSColor.black]
+        let size = (text as NSString).size(withAttributes: attrs)
+        let w = max(height, size.width + height * 0.7)
+        let image = NSImage(size: NSSize(width: w, height: height), flipped: false) { r in
+            NSColor(red: 1.0, green: 0.54, blue: 0.12, alpha: 1).setFill()
+            NSBezierPath(roundedRect: r, xRadius: height / 2, yRadius: height / 2).fill()
+            (text as NSString).draw(at: NSPoint(x: (w - size.width) / 2, y: (height - size.height) / 2), withAttributes: attrs)
+            return true
+        }
+        image.isTemplate = false
+        image.accessibilityDescription = "\(n) need you"
+        return image
     }
 }
 

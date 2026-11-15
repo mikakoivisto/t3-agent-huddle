@@ -127,9 +127,21 @@ struct HeaderBar: View {
     var body: some View {
         HStack(spacing: 8) {
             Circle().fill(model.anyMachineConnected ? Theme.lime : Theme.dim).frame(width: 9, height: 9)
-            Text(verbatim: "Agent Huddle").font(.system(size: 20, weight: .bold)).foregroundStyle(.white)
-            Text(verbatim: "\(model.state.count)").font(.system(size: 17, weight: .semibold)).foregroundStyle(Theme.grey)
-            Spacer()
+            Text(verbatim: "Agent Huddle").font(.system(size: 20, weight: .bold)).foregroundStyle(.white).lineLimit(1).fixedSize()
+            // Collapsed with something waiting: the pill and its buddies say more than the row count, and there is room for one.
+            if !(model.collapsed && !model.attentionSessions.isEmpty) {
+                Text(verbatim: "\(model.state.count)").font(.system(size: 17, weight: .semibold)).foregroundStyle(Theme.grey).fixedSize()
+            }
+            AttentionPill(model: model)
+            if model.collapsed {   // collapsed: who needs you, without expanding (spec 14)
+                HStack(spacing: -4) {
+                    ForEach(model.attentionSessions.prefix(3)) { s in
+                        RoundedRectangle(cornerRadius: 4).fill(Theme.buddy(s.buddy)).frame(width: 16, height: 16)
+                            .overlay(RoundedRectangle(cornerRadius: 4).stroke(Theme.panel, lineWidth: 2))
+                    }
+                }
+            }
+            Spacer(minLength: 4)
             IconButton(system: model.muted ? "speaker.slash" : "speaker.wave.2", help: model.muted ? "Unmute" : "Mute") { model.toggleMute() }
             IconButton(system: model.collapsed ? "chevron.down" : "chevron.up", help: model.collapsed ? "Expand" : "Collapse") { model.toggleCollapsed() }
             IconButton(system: "xmark", help: "Hide Agent Huddle") { model.hideWidget() }
@@ -144,7 +156,8 @@ struct DetailTopBar: View {
         HStack(spacing: 8) {
             IconButton(system: "chevron.left", help: "Back") { model.back() }
             BuddyPill(index: session.buddy, selected: true)
-            Spacer()
+            AttentionPill(model: model, excluding: session.threadId)
+            Spacer(minLength: 4)
             IconButton(system: "arrow.up.forward.square", help: "Open in T3 Code") { Task { await model.jump(session: session) } }
             IconButton(system: model.muted ? "speaker.slash" : "speaker.wave.2", help: "Mute") { model.toggleMute() }
             IconButton(system: model.collapsed ? "chevron.down" : "chevron.up", help: "Collapse") { model.toggleCollapsed() }
@@ -283,6 +296,9 @@ struct SessionRow: View {
         .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Theme.card))
         .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous)
             .stroke(Theme.lime, lineWidth: (hovering || session.needsAttention) ? 1.5 : 0))
+        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous)   // flashes once when the header pill brings you here
+            .stroke(Theme.attention, lineWidth: model.flashThreadId == session.threadId ? 3 : 0)
+            .animation(.easeInOut(duration: 0.3), value: model.flashThreadId))
         .onHover { hovering = $0 }
     }
 }
@@ -510,15 +526,22 @@ struct HuddleRootView: View {
                             Text(verbatim: "No active threads").font(.system(size: 14)).foregroundStyle(Theme.grey).padding(.vertical, 8)
                         }
                     } else {
-                        MaybeScroll {
-                            let groups = model.groups
-                            VStack(spacing: 8) {
-                                ForEach(groups) { g in
-                                    let badge = model.machineBadge(g.id)
-                                    if groups.count > 1 || badge != .thisMac { EnvironmentHeader(label: g.label, count: g.sessions.count, badge: badge) }
-                                    ForEach(g.sessions) { SessionRow(model: model, session: $0) }
-                                        .opacity(badge == .offline ? 0.5 : 1)
+                        ScrollViewReader { proxy in
+                            MaybeScroll {
+                                let groups = model.groups
+                                VStack(spacing: 8) {
+                                    ForEach(groups) { g in
+                                        let badge = model.machineBadge(g.id)
+                                        if groups.count > 1 || badge != .thisMac { EnvironmentHeader(label: g.label, count: g.sessions.count, badge: badge) }
+                                        ForEach(g.sessions) { SessionRow(model: model, session: $0).id($0.threadId) }
+                                            .opacity(badge == .offline ? 0.5 : 1)
+                                    }
                                 }
+                            }
+                            .onChange(of: model.revealThreadId) { _, id in   // the header pill: go to the first thread that needs you
+                                guard let id else { return }
+                                withAnimation(.easeOut(duration: 0.25)) { proxy.scrollTo(id, anchor: .top) }
+                                model.revealThreadId = nil
                             }
                         }
                     }
@@ -535,5 +558,28 @@ struct HuddleRootView: View {
         .background(RoundedRectangle(cornerRadius: 20, style: .continuous).fill(Theme.panel))
         .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).stroke(Color.white.opacity(0.08), lineWidth: 1))
         .preferredColorScheme(.dark)
+    }
+}
+
+// MARK: - Attention (spec 14)
+
+extension Theme {
+    /// Orange for "needs you" in the menu bar and the header pill: lime cannot be read on a light menu bar.
+    static let attention = Color(red: 1.0, green: 0.54, blue: 0.12)
+}
+
+/// "2 need you": shown while threads ask for something. A click goes to the first one (or the first other one, in a detail view).
+struct AttentionPill: View {
+    @ObservedObject var model: HuddleModel
+    var excluding: String? = nil
+    var body: some View {
+        let n = model.attentionSessions.filter { $0.threadId != excluding }.count
+        if n > 0 {
+            Button { model.revealAttention(excluding: excluding) } label: {
+                Text(verbatim: "\(n) need\(n == 1 ? "s" : "") you").font(.system(size: 11.5, weight: .heavy)).foregroundStyle(.black)
+                    .lineLimit(1).fixedSize()
+                    .padding(.horizontal, 8).padding(.vertical, 3).background(Capsule().fill(Theme.attention))
+            }.buttonStyle(.plain).help("Show the thread that needs you")
+        }
     }
 }

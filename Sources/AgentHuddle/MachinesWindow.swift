@@ -6,28 +6,12 @@ import HuddleCore
 // sign-in (answers and messages) and its optional inline approvals; "Add machine" signs in to another machine's T3.
 // Nothing here holds a credential: the user makes a pairing code on the machine and pastes it into that machine's T3 page.
 
+/// The Machines window is now the Settings window's Machines tab (spec 14); this keeps the existing call sites.
 @MainActor
 final class MachinesWindowController {
     static let shared = MachinesWindowController()
-    private var window: NSWindow?
-    private let flow = AddMachineFlow()
-
     func show(model: HuddleModel, adding address: String? = nil) {
-        if window == nil {
-            let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 540, height: 600),
-                             styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
-            w.title = "Machines"
-            w.isReleasedWhenClosed = false
-            w.contentView = NSHostingView(rootView: MachinesView(model: model, flow: flow))
-            w.contentMinSize = NSSize(width: 540, height: 360)
-            w.contentMaxSize = NSSize(width: 540, height: 4000)
-            w.backgroundColor = NSColor(Theme.panel)
-            w.center()
-            window = w
-        }
-        if let address { flow.start(address: address) }
-        NSApp.activate(ignoringOtherApps: true)
-        window?.makeKeyAndOrderFront(nil)
+        SettingsWindowController.shared.show(model: model, tab: .machines, adding: address)
     }
 }
 
@@ -57,17 +41,24 @@ final class AddMachineFlow: ObservableObject {
 struct MachinesView: View {
     @ObservedObject var model: HuddleModel
     @ObservedObject var flow: AddMachineFlow
+    @ObservedObject var setup: ApprovalSetup
     @Environment(\.snapshotMode) private var snapshot
 
     var body: some View {
         let content = VStack(alignment: .leading, spacing: 10) {
             Text(verbatim: "Each machine is reached through its own T3 Code. Connect one to answer and message its threads from the panel.")
                 .font(.system(size: 12)).foregroundStyle(Theme.grey).fixedSize(horizontal: false, vertical: true)
-            ThisMacMachineRow(model: model)
-            ForEach(model.otherMachineIds, id: \.self) { id in OtherMachineRow(model: model, flow: flow, id: id) }
+            ThisMacMachineRow(model: model, setup: setup)
+            ForEach(model.otherMachineIds, id: \.self) { id in OtherMachineRow(model: model, flow: flow, setup: setup, id: id) }
             if flow.open { AddMachineCard(model: model, flow: flow) }
-            else {
-                HStack { Spacer()
+            if setup.open == ApprovalSetup.discover { FindAddressesCard(setup: setup) }
+            HStack(spacing: 8) {
+                Spacer()
+                if setup.open != ApprovalSetup.discover, !model.linkedMachines.isEmpty {
+                    Button { setup.toggle(ApprovalSetup.discover) } label: { Pill(text: "Find addresses…", fill: Color.white.opacity(0.08), fg: Theme.grey) }
+                        .buttonStyle(.plain).help("Read the addresses this Mac’s T3 linked each machine at, once")
+                }
+                if !flow.open {
                     Button { flow.start() } label: { Pill(text: "Add machine…", fill: Color.white.opacity(0.12), fg: .white) }.buttonStyle(.plain)
                 }
             }
@@ -107,21 +98,9 @@ private struct MachineCard<Content: View>: View {
     }
 }
 
-private struct SwitchLine: View {
-    var on: Bool
-    var title: String
-    var detail: String?
-    var body: some View {
-        HStack(spacing: 8) {
-            Circle().fill(on ? Theme.lime : Color.white.opacity(0.25)).frame(width: 8, height: 8)
-            Text(verbatim: title).font(.system(size: 12.5, weight: .medium)).foregroundStyle(.white)
-            if let detail { Text(verbatim: "· \(detail)").font(.system(size: 11.5)).foregroundStyle(Theme.grey).lineLimit(1) }
-        }
-    }
-}
-
 struct ThisMacMachineRow: View {
     @ObservedObject var model: HuddleModel
+    @ObservedObject var setup: ApprovalSetup
     var body: some View {
         MachineCard {
             HStack(spacing: 8) {
@@ -130,35 +109,31 @@ struct ThisMacMachineRow: View {
                 Spacer()
                 Text(verbatim: "loopback").font(.system(size: 11)).foregroundStyle(Theme.dim)
             }
-            HStack {
-                switch model.state.connection {
-                case .connected:
-                    SwitchLine(on: true, title: "Answers & messages", detail: "signed in")
-                    Spacer()
+            switch model.state.connection {
+            case .connected:
+                FeatureLine(icon: "bubble.left.and.bubble.right", title: "Connected", detail: "Answer questions and message its threads.", chip: .on) {
                     Button { confirmSignOutThisMac(model) } label: { Pill(text: "Sign out", fill: Color.white.opacity(0.12), fg: .white) }.buttonStyle(.plain)
-                case .unauthorized:
-                    SwitchLine(on: false, title: "Answers & messages", detail: model.signingIn ? "approve in your browser…" : "not signed in")
-                    Spacer()
+                }
+            case .unauthorized:
+                FeatureLine(icon: "bubble.left.and.bubble.right", title: model.signingIn ? "Connecting…" : "Not connected",
+                            detail: model.signingIn ? "Approve Agent Huddle in your browser." : "T3 Code runs here. Connect to see and answer its threads.",
+                            chip: model.signingIn ? .settingUp : .off) {
                     if model.signingIn {
                         Button { model.cancelSignIn() } label: { Pill(text: "Cancel", fill: Color.white.opacity(0.12), fg: .white) }.buttonStyle(.plain)
                     } else {
                         Button { model.signIn() } label: { Pill(text: "Connect", fill: Theme.lime) }.buttonStyle(.plain)
                     }
-                case .notRunning:
-                    SwitchLine(on: false, title: "T3 Code isn’t running on this Mac", detail: nil)
-                default:
-                    SwitchLine(on: false, title: model.state.connection.headline ?? "Connecting…", detail: nil)
                 }
+            case .notRunning:
+                FeatureLine(icon: "bubble.left.and.bubble.right", title: "Not connected", detail: "T3 Code isn’t running on this Mac.", chip: .off) { EmptyView() }
+            default:
+                FeatureLine(icon: "bubble.left.and.bubble.right", title: "Not connected", detail: model.state.connection.headline ?? "Connecting…", chip: .off) { EmptyView() }
             }
-            HStack {
-                SwitchLine(on: model.inlineApprovals, title: "Allow / Deny", detail: model.inlineApprovals ? "on" : "off")
-                Spacer()
-                Button { ApprovalsWindowController.shared.show(model: model) } label: {
-                    Pill(text: model.inlineApprovals ? "Manage…" : "Set up…", fill: Color.white.opacity(0.12), fg: .white)
-                }.buttonStyle(.plain)
+            if model.state.connection == .connected {
+                ApprovalFeature(model: model, setup: setup, machineId: nil, name: model.localEnvironmentName ?? "This Mac")
             }
             if let note = model.connectNote {
-                Text(verbatim: note).font(.system(size: 11.5)).foregroundStyle(Theme.grey).fixedSize(horizontal: false, vertical: true)
+                Text(verbatim: note).font(.system(size: 11.5)).foregroundStyle(Theme.grey).fixedSize(horizontal: false, vertical: true).padding(.top, 6)
             }
         }
     }
@@ -167,11 +142,11 @@ struct ThisMacMachineRow: View {
 struct OtherMachineRow: View {
     @ObservedObject var model: HuddleModel
     @ObservedObject var flow: AddMachineFlow
+    @ObservedObject var setup: ApprovalSetup
     var id: String
     var body: some View {
         let badge = model.machineBadge(id)
         let connected = model.connectedMachineIds.contains(id)
-        let approvals = model.remoteApprovalStatus(id)
         MachineCard {
             HStack(spacing: 8) {
                 Text(verbatim: model.machineLabel(id)).font(.system(size: 14, weight: .bold)).foregroundStyle(.white).lineLimit(1)
@@ -181,9 +156,8 @@ struct OtherMachineRow: View {
                     Text(verbatim: URL(string: origin)?.host ?? origin).font(.system(size: 11)).foregroundStyle(Theme.dim).lineLimit(1).truncationMode(.middle)
                 }
             }
-            HStack {
-                SwitchLine(on: connected, title: "Answers & messages", detail: detail(badge, connected))
-                Spacer()
+            FeatureLine(icon: "bubble.left.and.bubble.right", title: connected ? "Connected" : "Not connected",
+                        detail: detail(badge, connected), chip: chip(badge, connected)) {
                 if case .waitingForBrowser? = model.machineSignIns[id] {
                     Button { model.cancelMachineSignIn(id) } label: { Pill(text: "Cancel", fill: Color.white.opacity(0.12), fg: .white) }.buttonStyle(.plain)
                 } else if connected {
@@ -193,30 +167,32 @@ struct OtherMachineRow: View {
                 }
             }
             if case .failed(let msg)? = model.machineSignIns[id] {
-                Text(verbatim: msg).font(.system(size: 11.5)).foregroundStyle(Theme.red).lineLimit(2)
+                Text(verbatim: msg).font(.system(size: 11.5)).foregroundStyle(Theme.red).lineLimit(2).padding(.top, 4)
             }
-            if case .offline(let why)? = model.machineStatus[id] {
-                Text(verbatim: why).font(.system(size: 11.5)).foregroundStyle(Theme.grey).lineLimit(2)
-            }
-            HStack {
-                SwitchLine(on: approvals == .on, title: "Allow / Deny",
-                           detail: approvals == .on ? "on" : approvals == .needsRepair ? "needs re-pairing" : "off · needs its own pairing code")
-                Spacer()
-                Button { ApprovalsWindowController.shared.show(model: model) } label: {
-                    Pill(text: approvals == .off ? "Set up…" : "Manage…", fill: Color.white.opacity(0.12), fg: .white)
-                }.buttonStyle(.plain)
+            if model.approvalMachines.contains(where: { $0.id == id }) {
+                ApprovalFeature(model: model, setup: setup, machineId: id, name: model.machineLabel(id))
             }
         }
     }
 
-    private func detail(_ badge: MachineBadge, _ connected: Bool) -> String {
-        if case .waitingForBrowser? = model.machineSignIns[id] { return "approve in your browser…" }
+    private func chip(_ badge: MachineBadge, _ connected: Bool) -> FeatureChip {
+        if case .waitingForBrowser? = model.machineSignIns[id] { return .settingUp }
         switch badge {
-        case .signInExpired: return "sign in again"
-        case .offline: return "signed in, not reachable"
-        case .linkedOnly: return "read-only through this Mac"
-        case .unsupported: return "unsupported T3 Code version"
-        default: return connected ? "signed in" : "not connected"
+        case .signInExpired, .offline, .unsupported: return .warn
+        default: return connected ? .on : .off
+        }
+    }
+
+    private func detail(_ badge: MachineBadge, _ connected: Bool) -> String {
+        if case .waitingForBrowser? = model.machineSignIns[id] { return "Approve it in your browser." }
+        switch badge {
+        case .signInExpired: return "T3 refused the saved sign-in. Connect again."
+        case .offline:
+            if case .offline(let why)? = model.machineStatus[id] { return "Signed in, but not reachable. \(why)" }
+            return "Signed in, but not reachable."
+        case .linkedOnly: return "Its threads are read-only here until you connect it."
+        case .unsupported: return "Unsupported T3 Code version."
+        default: return connected ? "Answer questions and message its threads." : "Connect to answer and message its threads."
         }
     }
 }

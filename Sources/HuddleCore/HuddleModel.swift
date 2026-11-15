@@ -115,6 +115,13 @@ public final class HuddleModel: ObservableObject {
     @Published public internal(set) var storedRemoteApprovalIds: [String] = []
     var remoteProbedIds: Set<String> = []
     @Published public private(set) var closeSettles = false
+    /// Spec 14: a hidden panel comes back when a thread starts needing the user. Off by default.
+    @Published public private(set) var showPanelOnAttention = false
+    /// The Settings window floats above other apps while open. On by default.
+    @Published public private(set) var settingsOnTop = true
+    /// The row the header pill asked to scroll to, and the row whose outline flashes once.
+    @Published public var revealThreadId: String?
+    @Published public private(set) var flashThreadId: String?
     @Published public private(set) var consecutiveFailures = 0
     /// Why the last connect attempt failed (shown under the Connect button). Never contains the token.
     @Published public private(set) var connectNote: String?
@@ -167,6 +174,8 @@ public final class HuddleModel: ObservableObject {
         state.hiddenIDs = Set(prefs.hiddenIDs)
         collapsed = prefs.collapsed; muted = prefs.muted
         readOnly = prefs.readOnly; closeSettles = prefs.closeSettles
+        showPanelOnAttention = prefs.showPanelOnAttention ?? false
+        settingsOnTop = prefs.settingsOnTop ?? true
         inlineApprovals = config.approvalStore.load() != nil
         connectedMachineIds = Set(config.machineStore.environmentIds())
     }
@@ -363,6 +372,7 @@ public final class HuddleModel: ObservableObject {
 
         let newlyNeeding = state.sessions.values.filter { $0.needsAttention && !attentionBefore.contains($0.threadId) }
         if !newlyNeeding.isEmpty && !muted { config.playSound() }
+        if !newlyNeeding.isEmpty && showPanelOnAttention && widgetHidden { widgetHidden = false }   // shown without taking focus
         // Drop selection of a session that vanished.
         if let id = selectedThreadID, state.sessions[id] == nil { selectedThreadID = nil }
     }
@@ -607,6 +617,38 @@ public final class HuddleModel: ObservableObject {
     public func showWidget() { widgetHidden = false }
     public func setReadOnly(_ v: Bool) { readOnly = v; prefs.readOnly = v; persist() }
     public func setCloseSettles(_ v: Bool) { closeSettles = v; prefs.closeSettles = v; persist() }
+    public func setShowPanelOnAttention(_ v: Bool) { showPanelOnAttention = v; prefs.showPanelOnAttention = v; persist() }
+    public func setSettingsOnTop(_ v: Bool) { settingsOnTop = v; prefs.settingsOnTop = v; persist() }
+    /// "Chime when something needs me" (Settings) and the panel's speaker button change the same thing.
+    public func setChime(_ on: Bool) { if muted == on { toggleMute() } }
+
+    // MARK: Attention (spec 14)
+
+    /// Visible rows that ask for something: a question, a permission, a secret.
+    public var attentionSessions: [Session] { sessions.filter(\.needsAttention) }
+    public var workingCount: Int { sessions.filter(\.isWorking).count }
+    public var menuBarTooltip: String { Self.tooltip(attention: attentionSessions.count, working: workingCount) }
+    public nonisolated static func tooltip(attention a: Int, working w: Int) -> String {
+        var parts: [String] = []
+        if a > 0 { parts.append("\(a) need\(a == 1 ? "s" : "") you") }
+        if w > 0 { parts.append("\(w) running") }
+        return parts.isEmpty ? "Agent Huddle" : parts.joined(separator: " · ")
+    }
+
+    /// The header pill: open the list, scroll to the first thread that needs you and flash it once.
+    public func revealAttention(excluding current: String? = nil) {
+        guard let first = attentionSessions.first(where: { $0.threadId != current }) else { return }
+        if collapsed { toggleCollapsed() }
+        selectedThreadID = nil
+        widgetHidden = false
+        revealThreadId = first.threadId
+        flashThreadId = first.threadId
+        let id = first.threadId
+        Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 1_200_000_000)
+            if self?.flashThreadId == id { self?.flashThreadId = nil }
+        }
+    }
     public func savePanelOrigin(x: Double, y: Double) { prefs.panelX = x; prefs.panelY = y; persist() }
     public var savedPanelMaxHeight: Double? { prefs.panelMaxHeight }
     public func savePanelMaxHeight(_ h: Double?) { prefs.panelMaxHeight = h; persist() }

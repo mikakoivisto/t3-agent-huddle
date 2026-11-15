@@ -39,7 +39,7 @@ extension HuddleModel {
 
     func noApprovalRouteMessage(_ threadId: String) -> String {
         guard let s = state.sessions[threadId], !isLocalThread(threadId) else { return "Inline approvals are not set up for this thread. Decide in T3 Code." }
-        return "Inline approvals aren’t set up for \(machineName(for: s)). Decide in T3 Code."
+        return "Approving commands from the panel isn’t set up for \(machineName(for: s)). Decide in T3 Code."
     }
 
     /// Which linked machines have a credential. Keychain is read when the set of linked machines changes (not every poll).
