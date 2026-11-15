@@ -53,6 +53,10 @@ The two machines are **Mika’s MacBook Pro** (plays "this Mac") and **Mika’s 
 | `56-new-thread` / `57-new-thread-options` / `58-new-thread-started` | Starting a new thread: the composer, its options, the started thread |
 | `59-settings-new-threads` | Settings → General → New threads (the defaults) |
 
+## Social preview
+
+[`social-preview.png`](social-preview.png): 1280×640, the repository's social preview (uploaded by hand in the repo's Settings → General). Made from stills 29 and 01 by `scripts/make-social-preview.swift`; rerun it after `make-demo.sh` if the stills change.
+
 ## What is fake or approximate
 
 - **Data:** two fake servers, synthetic threads. The Mac mini's fake only answers its own decisions; the MacBook's fake serves the list for both machines, like T3's linked environments do.
