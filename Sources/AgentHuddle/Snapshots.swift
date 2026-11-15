@@ -236,6 +236,35 @@ enum Snapshots {
         save(ids: [DemoScenario.render], em, "43-message-read-only", dir)
         e.stop()
 
+        // F. Machines (spec 15): the Mac mini connected directly, a build box only linked, a studio Mac offline.
+        let (fl, fm) = DemoScenario.makeFakes()
+        try? await fl.start(); try? await fm.start()
+        DemoScenario.start(fl, only: [DemoScenario.docs, DemoScenario.render])
+        DemoScenario.start(fm, only: [DemoScenario.config, DemoScenario.scripts])
+        DemoScenario.addBuildBox(fl)
+        let machines = MemoryMachineCredentialStore([
+            MachineCredential(environmentId: DemoScenario.miniEnv, origin: "http://127.0.0.1:\(fm.port)", token: fm.token, label: DemoScenario.macMini),
+            MachineCredential(environmentId: "env_studio", origin: "http://127.0.0.1:9", token: "x", label: "Studio Mac"),
+        ])
+        let mm = HuddleModel(config: HuddleConfig(source: .fixed(fl.url), tokenStore: MemoryTokenStore(token: fl.token),
+                                                  remotePolicy: .loopbackFixture, machineStore: machines,
+                                                  preferences: PreferencesStore(directory: prefs.appendingPathComponent("f"))))
+        await mm.refresh(); await mm.refresh()
+        save(mm, "44-machines-panel", dir)
+        write(MachinesView(model: mm, flow: AddMachineFlow()).environment(\.snapshotMode, true), "45-machines-window", dir, scale: 2)
+        let flow = AddMachineFlow()
+        flow.start(address: "http://127.0.0.1:\(fm.port)")
+        _ = machines.delete(environmentId: DemoScenario.miniEnv)            // as if the Mac mini were not connected yet
+        let addModel = HuddleModel(config: HuddleConfig(source: .fixed(fl.url), tokenStore: MemoryTokenStore(token: fl.token),
+                                                        remotePolicy: .loopbackFixture, machineStore: MemoryMachineCredentialStore(),
+                                                        preferences: PreferencesStore(directory: prefs.appendingPathComponent("f2"))))
+        await addModel.refresh()
+        flow.found = try? await addModel.identifyMachine(address: flow.address)
+        flow.address = "mikas-mac-mini.tailnet-demo.ts.net"
+        write(AddMachineCard(model: addModel, flow: flow).frame(width: 508).padding(16).background(Theme.panel).environment(\.snapshotMode, true),
+              "46-machines-add", dir, scale: 2)
+        fl.stop(); fm.stop()
+
         // D. Closing, the collapsed header, a jump that cannot be delivered, and T3 going away.
         let d = await DemoRig.make(prefs: prefs.appendingPathComponent("d"))
         DemoScenario.start(d.local); DemoScenario.addWaiters(d.local)

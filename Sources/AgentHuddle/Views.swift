@@ -126,7 +126,7 @@ struct HeaderBar: View {
     @ObservedObject var model: HuddleModel
     var body: some View {
         HStack(spacing: 8) {
-            Circle().fill(model.state.connection.isConnected ? Theme.lime : Theme.dim).frame(width: 9, height: 9)
+            Circle().fill(model.anyMachineConnected ? Theme.lime : Theme.dim).frame(width: 9, height: 9)
             Text(verbatim: "Agent Huddle").font(.system(size: 20, weight: .bold)).foregroundStyle(.white)
             Text(verbatim: "\(model.state.count)").font(.system(size: 17, weight: .semibold)).foregroundStyle(Theme.grey)
             Spacer()
@@ -160,37 +160,70 @@ struct ConnectionBanner: View {
     @State private var token = ""
     @State private var entering = false
     var body: some View {
-        if let text = model.state.connection.headline, model.state.connection != .connected {
+        let local = model.state.connection
+        if !model.anyMachineConnected {
+            // Nothing connected yet: this Mac is one choice, another machine the other (spec 15).
             VStack(alignment: .leading, spacing: 8) {
-                if model.state.connection != .unauthorized {
-                    Text(verbatim: text).font(.system(size: 14, weight: .semibold)).foregroundStyle(Theme.grey)
-                }
-                if model.state.connection == .unauthorized {
-                    if model.signingIn {
-                        HStack(spacing: 8) {
-                            Spinner(size: 14)
-                            Text(verbatim: "Approve Agent Huddle in your browser…").font(.system(size: 13)).foregroundStyle(Theme.grey)
-                            Spacer()
+                Text(verbatim: "Connect to T3 Code").font(.system(size: 14, weight: .semibold)).foregroundStyle(.white)
+                if local == .unauthorized {
+                    ConnectChoice(icon: "laptopcomputer", title: "This Mac", detail: model.signingIn ? "Approve Agent Huddle in your browser…" : "T3 Code is running here") {
+                        if model.signingIn {
                             Button("Cancel") { model.cancelSignIn() }.buttonStyle(.plain).foregroundStyle(Theme.lime).font(.system(size: 13, weight: .semibold))
+                        } else {
+                            Button { model.signIn() } label: { Pill(text: "Connect", fill: Theme.lime) }.buttonStyle(.plain)
                         }
-                    } else if entering {
+                    }
+                } else if let text = local.headline, local != .connected {
+                    Text(verbatim: local == .notRunning ? "T3 Code isn’t running on this Mac." : text)
+                        .font(.system(size: 12.5)).foregroundStyle(Theme.grey).fixedSize(horizontal: false, vertical: true)
+                }
+                ConnectChoice(icon: "desktopcomputer", title: "Another machine…", detail: "A Mac mini, a build box, over Tailscale") {
+                    Button { MachinesWindowController.shared.show(model: model, adding: "") } label: {
+                        Pill(text: "Add", fill: Color.white.opacity(0.12), fg: .white)
+                    }.buttonStyle(.plain)
+                }
+                if local == .unauthorized && !model.signingIn {
+                    if entering {
                         HStack {
                             SecureField("Paste scoped token", text: $token).textFieldStyle(.roundedBorder)
                             Button("Save") { let t = token; token = ""; entering = false; Task { await model.submitToken(t) } }
                         }
                         Text(verbatim: "Stored in the macOS Keychain only.").font(.system(size: 11)).foregroundStyle(Theme.dim)
                     } else {
-                        Button { model.signIn() } label: { Pill(text: "Connect to T3 Code", fill: Theme.lime) }.buttonStyle(.plain)
-                        Button { entering = true } label: { Text(verbatim: "or paste a token").font(.system(size: 11)).foregroundStyle(Theme.dim) }.buttonStyle(.plain)
+                        Button { entering = true } label: { Text(verbatim: "or paste a token for this Mac").font(.system(size: 11)).foregroundStyle(Theme.dim) }.buttonStyle(.plain)
                     }
-                    if let note = model.connectNote {
-                        Text(verbatim: note).font(.system(size: 12)).foregroundStyle(Theme.red).fixedSize(horizontal: false, vertical: true)
-                    }
+                }
+                if let note = model.connectNote {
+                    Text(verbatim: note).font(.system(size: 12)).foregroundStyle(Theme.red).fixedSize(horizontal: false, vertical: true)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading).padding(12)
             .background(RoundedRectangle(cornerRadius: 12).fill(Theme.card))
+        } else if case .error(let m) = local {
+            Text(verbatim: m).font(.system(size: 12)).foregroundStyle(Theme.grey).frame(maxWidth: .infinity, alignment: .leading)
+        } else if case .unsupported = local, let text = local.headline {
+            Text(verbatim: text).font(.system(size: 12)).foregroundStyle(Theme.grey).frame(maxWidth: .infinity, alignment: .leading)
         }
+    }
+}
+
+struct ConnectChoice<Trailing: View>: View {
+    var icon: String
+    var title: String
+    var detail: String
+    @ViewBuilder var trailing: () -> Trailing
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: icon).font(.system(size: 15)).foregroundStyle(.white)
+                .frame(width: 32, height: 32).background(RoundedRectangle(cornerRadius: 8).fill(Color.white.opacity(0.1)))
+            VStack(alignment: .leading, spacing: 1) {
+                Text(verbatim: title).font(.system(size: 13.5, weight: .bold)).foregroundStyle(.white)
+                Text(verbatim: detail).font(.system(size: 11.5)).foregroundStyle(Theme.grey).lineLimit(2)
+            }
+            Spacer(minLength: 4)
+            trailing()
+        }
+        .padding(10).background(RoundedRectangle(cornerRadius: 10).fill(Theme.cardRaised))
     }
 }
 
@@ -258,10 +291,12 @@ struct SessionRow: View {
 struct EnvironmentHeader: View {
     var label: String
     var count: Int
+    var badge: MachineBadge? = nil
     var body: some View {
         HStack(spacing: 6) {
             Text(verbatim: label.uppercased()).font(.system(size: 11, weight: .heavy)).foregroundStyle(Theme.grey)
             Text(verbatim: "\(count)").font(.system(size: 11, weight: .semibold)).foregroundStyle(Theme.dim)
+            if let badge, badge != .thisMac, badge != .connected { MachineBadgeView(badge: badge) }
             Rectangle().fill(Color.white.opacity(0.08)).frame(height: 1)
         }
         .padding(.top, 6).padding(.horizontal, 4)
@@ -361,7 +396,16 @@ struct QuestionPanel: View {
             }
             Text(verbatim: question.prompt).font(.system(size: 17, weight: .bold)).foregroundStyle(.white)
                 .fixedSize(horizontal: false, vertical: true)
-            if writing {
+            if !model.canAnswer(session) {
+                // Shown through this Mac's T3 only: T3 refuses answers sent that way. Connecting the machine fixes it (spec 15).
+                HStack(spacing: 6) {
+                    Text(verbatim: "Connect \(session.environmentId.map(model.machineLabel) ?? "that machine") to answer here.")
+                        .font(.system(size: 12.5)).foregroundStyle(Theme.grey).fixedSize(horizontal: false, vertical: true)
+                    Button { MachinesWindowController.shared.show(model: model) } label: {
+                        Text(verbatim: "Machines…").font(.system(size: 12.5, weight: .semibold)).foregroundStyle(Theme.lime)
+                    }.buttonStyle(.plain)
+                }
+            } else if writing {
                 AnswerEditor(model: model, store: model.composer, session: session, question: question)
             } else {
                 if question.answerableInWidget {
@@ -462,7 +506,7 @@ struct HuddleRootView: View {
                 if !model.collapsed {
                     ConnectionBanner(model: model)
                     if model.sessions.isEmpty {
-                        if model.state.connection.isConnected {
+                        if model.anyMachineConnected {
                             Text(verbatim: "No active threads").font(.system(size: 14)).foregroundStyle(Theme.grey).padding(.vertical, 8)
                         }
                     } else {
@@ -470,8 +514,10 @@ struct HuddleRootView: View {
                             let groups = model.groups
                             VStack(spacing: 8) {
                                 ForEach(groups) { g in
-                                    if groups.count > 1 { EnvironmentHeader(label: g.label, count: g.sessions.count) }
+                                    let badge = model.machineBadge(g.id)
+                                    if groups.count > 1 || badge != .thisMac { EnvironmentHeader(label: g.label, count: g.sessions.count, badge: badge) }
                                     ForEach(g.sessions) { SessionRow(model: model, session: $0) }
+                                        .opacity(badge == .offline ? 0.5 : 1)
                                 }
                             }
                         }

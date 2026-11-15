@@ -131,6 +131,7 @@ let options = parseArgs()
         config = HuddleConfig(source: .runtimeFile(Discovery(runtimeFile: options.runtimeFile ?? Discovery.defaultRuntimeFile)),
                               tokenStore: KeychainTokenStore(vault: vault, slot: .bearer), approvalStore: KeychainTokenStore(vault: vault, slot: .approvals),
                               remoteApprovalStore: KeychainRemoteCredentialStore(vault: vault),
+                              machineStore: KeychainMachineStore(vault: vault),
                               peerVerifier: BundlePeerVerifier(),
                               preferences: PreferencesStore(directory: options.prefsDir ?? PreferencesStore.defaultDirectory),
                               log: log, jumper: T3Jumper(), playSound: sound,

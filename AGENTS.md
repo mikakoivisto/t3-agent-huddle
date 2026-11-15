@@ -22,7 +22,7 @@ scripts/build-app.sh                          # dist/Agent Huddle.app (icon, MIT
 
 ## Run only when the user asks
 
-- **`scripts/live-check.sh`** talks to the real T3 Code on this Mac. It mints a pairing credential and an OAuth session, then revokes both. With `--send-check STEER_ID QUESTION_ID` it sends a steer, a queued message and a written answer to those two threads: create throwaway threads for it (in approval-required mode; see spec 13) and archive them after.
+- **`scripts/live-check.sh`** talks to the real T3 Code on this Mac. It mints a pairing credential and an OAuth session, then revokes both. With `--send-check STEER_ID QUESTION_ID` it sends a steer, a queued message and a written answer to those two threads: create throwaway threads for it (in approval-required mode; see spec 13) and archive them after. `--send-raw`, `--remote-mcp` (with `--access auto`) and `--remote-send` exercise one send and the other-machine MCP (spec 15) against this Mac's own https address; they send too.
 - **`scripts/live-check-remote.sh https://<this-mac>.<tailnet>.ts.net`** exercises the remote-machine path against this Mac's own https address. It mints two pairing credentials and revokes them and every session it created.
 - **`scripts/make-demo.sh`** deletes and regenerates the tracked binaries under `demo/`, and needs `ffmpeg`.
 - **Launching `AgentHuddle` with no flags** uses the real runtime file, the Keychain and the real jump.
@@ -31,7 +31,8 @@ scripts/build-app.sh                          # dist/Agent Huddle.app (icon, MIT
 
 These come from the original spec (§3 and §10) and later decisions. Several are enforced by `Tests/HuddleCoreTests/SecurityTests.swift`.
 
-- **Loopback only, with one opt-in exception.** Connect to the IP literals `127.0.0.1` and `::1`. `localhost` and every other host are refused. Route every URL through `LoopbackGuard`. The exception is **inline approvals for another machine** (below): the user turns it on per machine, and nothing else may connect to a non-loopback host.
+- **Loopback only, with two opt-in exceptions.** Connect to the IP literals `127.0.0.1` and `::1`. `localhost` and every other host are refused. Route every URL through `LoopbackGuard`. The exceptions are **inline approvals for another machine** and **another machine's MCP** (spec 15, below): the user sets each up per machine, and nothing else may connect to a non-loopback host.
+- **Another machine's MCP (spec 15)** gets the remote-approvals guardrails: `RemoteOriginPolicy.production` (https, names only), system trust, no redirects, `BoundedHTTP`. `MCPClient(remote:)` and `OAuthClient(remote:)` take only a `VerifiedRemoteOrigin`; `RemoteIdentity.verify` runs before the sign-in and before every client (re)build, against the id stored with the token. `RemoteIdentity.identify` returns an `IdentifiedRemote` (no proof) for a typed address; the user confirms the name. The token lives in the vault's `machines` record with its one origin and that machine's own OAuth client. Rows from a machine are stamped with its id by the app (`fetchDirectLists`), every call for them goes through `HuddleModel.onMachine`, and a failure there (`MachineFailure`) is that machine's only: a 401 deletes only its token. Rows seen only through this Mac's link are read-only (`isLinkedOnly`).
 - **Never modify T3 Code.** Write nothing under `~/.t3`, and change no T3 setting. If T3 needs a config change, document it in the README.
 - **Read one T3 file only:** `~/.t3/userdata/server-runtime.json`, in `Discovery.swift`.
 - **Never open T3's SQLite files**, not even read-only.

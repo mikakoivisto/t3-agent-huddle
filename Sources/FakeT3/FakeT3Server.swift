@@ -331,7 +331,7 @@ public final class FakeT3Server: @unchecked Sendable {
             }
             if let e = args["environmentId"].string, name != "t3_environment_link" {
                 lock.lock(); let linked = linkedIds ?? (o.preLinked ? Set(o.linkedEnvironmentLabels.keys) : []); lock.unlock()
-                if e != "env_local" && !linked.contains(e) {
+                if e != o.environmentId && !linked.contains(e) {
                     throw FakeToolError(#"{"_tag":"OrchestratorMcpFailure","code":"not_linked","message":"That environment is not linked."}"#)
                 }
             }
@@ -343,11 +343,11 @@ public final class FakeT3Server: @unchecked Sendable {
                 payload = ["status": "pending"]
             case "t3_environment_read":
                 let e = args["environmentId"].string
-                payload = ["environmentId": .string(e ?? "env_local"), "label": .string(e.flatMap { o.linkedEnvironmentLabels[$0] } ?? o.localEnvironmentLabel), "serverVersion": "0.1.9"]
+                payload = ["environmentId": .string(e ?? o.environmentId), "label": .string(e.flatMap { o.linkedEnvironmentLabels[$0] } ?? o.localEnvironmentLabel), "serverVersion": "0.1.9"]
             case "t3_environment_links":
                 lock.lock(); let linked = linkedIds ?? (o.preLinked ? Set(o.linkedEnvironmentLabels.keys) : []); lock.unlock()
                 let rows: [JSON] = linked.sorted().map { ["environmentId": .string($0), "label": .string(o.linkedEnvironmentLabels[$0] ?? $0)] }
-                var out: [String: JSON] = ["links": .array(rows), "environmentId": "env_local"]   // live shape (L8)
+                var out: [String: JSON] = ["links": .array(rows), "environmentId": .string(o.environmentId)]   // live shape (L8)
                 if rows.isEmpty { out["notListed"] = "Not listed: not linked yet. Call t3_environment_link with a hint from the user's words." }
                 payload = .object(out)
             case "t3_thread_list": payload = threadList(args)
@@ -401,7 +401,7 @@ public final class FakeT3Server: @unchecked Sendable {
         var o: [String: JSON] = [
             "threadId": .string(t.id), "projectId": .string(t.projectId), "title": .string(t.title),
             // live: this Mac's T3 returns a bare URL, a linked machine's returns a markdown link
-            "link": .string(t.environmentId == "env_local" ? "https://app.t3.codes/threads/\(t.environmentId)/\(t.id)"
+            "link": .string(t.environmentId == options.environmentId ? "https://app.t3.codes/threads/\(t.environmentId)/\(t.id)"
                                       : "[\(t.title)](t3-thread://v2/\(t.environmentId)/\(t.id))"),
             "environmentId": .string(t.environmentId), "status": .string(t.status),
             "providerInstanceId": .string(t.providerInstanceId), "branch": t.branch.map { .string($0) } ?? .null,
@@ -419,7 +419,7 @@ public final class FakeT3Server: @unchecked Sendable {
         let limit = min(args["limit"].int ?? 25, 100)
         let start = args["cursor"].int ?? 0
         // Mimic the real quirk: subagents come back even without includeSubagents (§5.3).
-        let env = args["environmentId"].string ?? "env_local"
+        let env = args["environmentId"].string ?? options.environmentId
         let rows = order.compactMap { threads[$0] }
             .filter { $0.environmentId == env }
             .filter { statuses.isEmpty || statuses.contains($0.status) }

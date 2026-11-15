@@ -20,6 +20,7 @@ State on `main`. The automated tests (`swift test`) run against a fake T3 only.
 | 12 | [Cross-cutting rules](12-non-functional-rules.md) | yes | none | loopback, redirects, scans, tool set, log scrubbing, polling schedule | plain-text rule has no scan; request budget never measured |
 | 13 | [Write and send](13-write-and-send.md) | yes (phase 1) | steer mid-turn, queue to the next turn, written answer, real question shape, the mode refusal | send, queue, steer, the stale-steer check, retries and ids, written answers, read-only, target and collision checks, tool gating (`SendTests`) | steer, queue and a written answer verified **live** (approval-required threads); threads in auto or full access refuse sends and answers from the recommended sign-in; the editors, focus and edit keys are unchecked by hand |
 | 14 | [Dictation](14-dictation.md) | no (proposed, phase 2) | none | none | starts after 13 is verified |
+| 15 | [Machines](15-machines.md) | yes | remote MCP sign-in over Tailscale https, list, steer, queue, written answer (live check against the Mac mini's own address) | routing, offline isolation, 401 per machine, identity check, linked-only read-only, add and sign out (`MachinesTests`) | the Machines window not clicked through by hand; sign-in level not shown; Allow / Deny setup still opens the separate window |
 
 ## What blocks calling the prototype verified
 

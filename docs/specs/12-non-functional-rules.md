@@ -15,7 +15,7 @@ This spec owns the rules the other specs reuse. Feature specs link here instead 
 
 | # | Rule | Enforced by |
 |---|---|---|
-| S1 | **Loopback only.** Connect to the IP literals `127.0.0.1` and `::1`; `localhost` and every other host are refused; every URL passes `LoopbackGuard`. The one exception is inline approvals for another machine (spec 07): per machine, https/wss, verified identity | `SecurityTests.loopbackGuardRules`; `DiscoveryTests.nonLoopbackHostRefused`; `ApprovalTests.theSocketRefusesNonLoopbackOrigins`; `RemoteApprovalTests` (policy and scans) |
+| S1 | **Loopback only.** Connect to the IP literals `127.0.0.1` and `::1`; `localhost` and every other host are refused; every URL passes `LoopbackGuard`. The one exception is inline approvals for another machine (spec 07): per machine, https/wss, verified identity | `SecurityTests.loopbackGuardRules`; `DiscoveryTests.nonLoopbackHostRefused`; `ApprovalTests.theSocketRefusesNonLoopbackOrigins`; `RemoteApprovalTests` (policy and scans) | Spec 15 adds a second opt-in exception: another machine's MCP over https, per machine, same guardrails (`MachinesTests`).
 | S2 | **Never modify T3 Code.** Nothing written under `~/.t3`; no T3 setting changed. T3-side footprint is limited to: one OAuth client registration, answering a question, a message the user writes and sends (spec 13), the optional settle, and the opt-in approval and discovery sessions | `SecurityTests.sourcesTouchHomeT3OnlyForTheRuntimeFileAndNeverOpenSQLite` (static); tool-set tests below |
 | S3 | **Read one T3 file only:** `server-runtime.json`, in `Discovery.swift` | same scan |
 | S4 | **Never open T3's SQLite files**, and the word `sqlite` may not appear in any source, even a comment | same scan |
@@ -67,7 +67,7 @@ This spec owns the rules the other specs reuse. Feature specs link here instead 
 
 ### Quality gates
 
-- **Tests:** Swift Testing (`@Suite`, `@Test`, `#expect`). 258 tests in 32 suites. Run one suite by struct name (`swift test --filter SecurityTests`).
+- **Tests:** Swift Testing (`@Suite`, `@Test`, `#expect`). 272 tests in 33 suites. Run one suite by struct name (`swift test --filter SecurityTests`).
 - **No linter or formatter** is configured; match the surrounding style.
 - **UI checks:** `AgentHuddle --snapshot DIR` renders every UI state to PNGs; add each new state to `Snapshots.swift`. No automated test clicks the panel.
 - **Change together:** a new T3 tool or argument updates the fake handler and the allowed set in `ModelTests.clientNeverCallsForbiddenToolsOrIncludeSubagents`; `ContractCheck.required` lists only tools the app cannot work without; a bug found against real T3 gets the fake corrected and a regression test; the test count in README and `docs/specs/status.md` is updated; approval frame changes update `FakeApprovals.swift`.

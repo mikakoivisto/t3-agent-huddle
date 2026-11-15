@@ -36,11 +36,12 @@ public enum DemoScenario {
         var lo = FakeT3Server.Options()
         lo.linkedEnvironments = true
         lo.localEnvironmentLabel = macBook
-        lo.linkedEnvironmentLabels = [miniEnv: macMini]
+        lo.linkedEnvironmentLabels = [miniEnv: macMini, buildBoxEnv: "Build box"]
         lo.projectTitles = projects
         lo.pairingCode = "demo-code-macbook"
         var mo = FakeT3Server.Options()
         mo.environmentId = miniEnv; mo.environmentLabel = macMini; mo.pairingCode = "demo-code-macmini"
+        mo.localEnvironmentLabel = macMini; mo.projectTitles = projects
         let local = FakeT3Server(options: lo), mini = FakeT3Server(options: mo)
         mini.decisionObserver = { [weak local] t, r, d in local?.mirrorDecision(threadId: t, requestId: r, decision: d) }   // the MacBook lists that thread too
         return (local, mini)
@@ -67,6 +68,14 @@ public enum DemoScenario {
             Scenario.cmd(0, "ls scripts", output: "build.sh\nrelease.sh\nlint.sh"),
             Scenario.cmd(1, "bash scripts/lint.sh", status: "running"),
         ], environmentId: miniEnv, providerInstanceId: "grok", model: "grok-code-fast-1", runningFor: 96, projectId: "proj_cli"))
+    }
+
+    public static let buildBoxEnv = "env_buildbox"
+    /// A machine only linked in this Mac's T3 (spec 15: read-only rows): a nightly release that asks a question.
+    public static func addBuildBox(_ s: FakeT3Server) {
+        s.add(T(id: "thr_nightly", title: "Nightly release", status: "waiting", items: [Scenario.tool(0, "Read RELEASES.md")], questions: [
+            .init(requestId: "req_nightly", header: "SHIP", question: "Ship the nightly now?", options: ["Ship", "Wait"]),
+        ], environmentId: buildBoxEnv, runningFor: 300, projectId: "proj_release"))
     }
 
     /// A thread asks a question (a different model, on the pi harness).

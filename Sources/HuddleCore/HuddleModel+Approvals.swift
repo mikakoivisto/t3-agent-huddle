@@ -48,7 +48,6 @@ extension HuddleModel {
             }
             // Everything this decision uses is captured here, at the click: the machine, the credential and the request. A refresh
             // that replaces the row while the awaits below run cannot move the read or the decision to another machine.
-            let environment = env(threadId)
             let clickedEnvironmentId = session.environmentId
             let target: DecisionTarget
             switch route {
@@ -60,9 +59,10 @@ extension HuddleModel {
                 guard let credential = config.remoteApprovalStore.load(environmentId: environmentId) else { throw HuddleError.approvalAuth }
                 target = .machine(credential)
             }
-            let client = try await ensureClient()
             // Read that very item (not just the newest positions): still waiting, complete, and the same command text as shown.
-            guard let item = try await client.readItem(threadId: threadId, itemId: ApprovalWire.itemId(forRequestId: requestId), environment: environment),
+            // On a machine connected directly the read goes to its own MCP (spec 15); otherwise through this Mac's T3.
+            guard let item = try await onMachine(threadId, { c, env in
+                      try await c.readItem(threadId: threadId, itemId: ApprovalWire.itemId(forRequestId: requestId), environment: env) }),
                   HuddleState.isApprovable(item), ApprovalWire.requestId(fromItemId: item.itemId) == requestId,
                   HuddleState.approvalSummary(item) == summary else {
                 throw HuddleError.approval("The request changed. Check it in T3 Code.")

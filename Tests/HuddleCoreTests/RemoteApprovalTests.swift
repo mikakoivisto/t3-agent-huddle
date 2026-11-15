@@ -550,7 +550,8 @@ struct RemoteApprovalTests {
         }
         // The remote decision socket and the remote session have a short, known list of callers.
         for (name, t) in all where t.contains("ApprovalSocket(remote:") { #expect(["HuddleModel+Approvals.swift", "RemoteCheck.swift"].contains(name), "\(name) opens a remote decision socket") }
-        for (name, t) in all where t.contains("RemoteSession.make") { #expect(["RemoteOrigin.swift", "RemoteApproval.swift", "ApprovalSocket.swift"].contains(name), "\(name) opens a remote session") }
+        // Spec 15 adds the remote MCP client and its sign-in; both take only a `VerifiedRemoteOrigin`.
+        for (name, t) in all where t.contains("RemoteSession.make") { #expect(["RemoteOrigin.swift", "RemoteApproval.swift", "ApprovalSocket.swift", "MCPClient.swift", "OAuth.swift"].contains(name), "\(name) opens a remote session") }
         for (name, t) in all where t.contains("remoteApprovalStore") || t.contains("RemoteCredentialStore") {
             #expect(["HuddleModel.swift", "HuddleModel+Approvals.swift", "HuddleModel+RemoteApprovals.swift", "RemoteApproval.swift", "main.swift", "Snapshots.swift"].contains(name), "\(name) reads remote credentials")
         }
