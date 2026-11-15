@@ -20,6 +20,9 @@ public final class OAuthClient: @unchecked Sendable {
     private let opener: Opener
     private let session: URLSession
     private let timeout: TimeInterval
+    /// nil = this Mac (every endpoint must pass `LoopbackGuard`); otherwise the verified https origin of another machine
+    /// (spec 15): every endpoint must be on exactly that origin. The redirect always comes back to this Mac's loopback.
+    private let remote: VerifiedRemoteOrigin?
 
     public init(mcpEndpoint: URL, log: HuddleLog, opener: @escaping Opener, timeout: TimeInterval = 180) throws {
         try LoopbackGuard.validate(mcpEndpoint)
@@ -29,6 +32,18 @@ public final class OAuthClient: @unchecked Sendable {
         origin = c.url!
         self.log = log; self.opener = opener; self.timeout = timeout
         session = LoopbackSession.make(timeout: 10)
+        remote = nil
+    }
+
+    /// Another machine's T3 (spec 15). Only a `VerifiedRemoteOrigin` gets here, so the identity check has run.
+    public init(remote: VerifiedRemoteOrigin, log: HuddleLog, opener: @escaping Opener, timeout: TimeInterval = 180) throws {
+        guard let mcp = remote.origin.httpURL(path: "/mcp"), let base = remote.origin.httpURL(path: "") else {
+            throw HuddleError.oauth("bad machine address")
+        }
+        mcpURL = mcp; origin = base
+        self.log = log; self.opener = opener; self.timeout = timeout
+        session = RemoteSession.make(timeout: 10)
+        self.remote = remote
     }
 
     public static let scopes = ["orchestration:read", "orchestration:operate"]
@@ -114,8 +129,14 @@ public final class OAuthClient: @unchecked Sendable {
         }
         func ep(_ key: String) throws -> URL {
             guard let s = j[key].string, let u = URL(string: s) else { throw HuddleError.oauth("metadata missing \(key)") }
-            try LoopbackGuard.validate(u)
-            guard u.port == origin.port, u.host == origin.host else { throw HuddleError.nonLoopback(u.host ?? s) }
+            if let remote {
+                // Exactly the machine's own origin: same scheme, host and port. A server pointing elsewhere is refused.
+                guard u.scheme == remote.origin.url.scheme, u.host?.lowercased() == remote.origin.url.host?.lowercased(),
+                      u.port == remote.origin.url.port, u.user == nil, u.password == nil else { throw HuddleError.oauth("sign-in endpoint is not on \(remote.origin.host)") }
+            } else {
+                try LoopbackGuard.validate(u)
+                guard u.port == origin.port, u.host == origin.host else { throw HuddleError.nonLoopback(u.host ?? s) }
+            }
             return u
         }
         return Metadata(issuer: j["issuer"].string ?? origin.absoluteString, authorize: try ep("authorization_endpoint"),

@@ -33,6 +33,17 @@ public final class MCPClient: @unchecked Sendable {
         self.session = LoopbackSession.make(timeout: timeout)
     }
 
+    /// Another machine's T3 MCP over https (spec 15): only a verified origin, the system's certificate trust, no redirects,
+    /// no proxy, no cookies. The token goes only to this one origin.
+    public init(remote: VerifiedRemoteOrigin, token: String, log: HuddleLog = HuddleLog(), timeout: TimeInterval = 10) throws {
+        guard let mcp = remote.origin.httpURL(path: "/mcp") else { throw HuddleError.badResponse("bad machine address") }
+        self.endpoint = mcp
+        self.token = token
+        self.log = log
+        log.register(secret: token)
+        self.session = RemoteSession.make(timeout: timeout)
+    }
+
     deinit { session.invalidateAndCancel() }
 
     // MARK: Public API

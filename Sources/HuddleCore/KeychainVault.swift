@@ -103,6 +103,8 @@ struct VaultContents: Codable, Equatable {
     var approvals: String?
     /// One credential per linked machine; each carries the one origin it may be sent to.
     var remote: [String: RemoteApprovalCredential] = [:]
+    /// Spec 15: the MCP sign-in of each other machine the user connected, with the one origin it may be sent to.
+    var machines: [String: MachineCredential] = [:]
     /// False while a legacy item could not be read, so the next launch tries again.
     var migrated = true
 
@@ -113,11 +115,12 @@ struct VaultContents: Codable, Equatable {
         bearer = try c.decodeIfPresent(String.self, forKey: .bearer)
         approvals = try c.decodeIfPresent(String.self, forKey: .approvals)
         remote = try c.decodeIfPresent([String: RemoteApprovalCredential].self, forKey: .remote) ?? [:]
+        machines = try c.decodeIfPresent([String: MachineCredential].self, forKey: .machines) ?? [:]
         migrated = try c.decodeIfPresent(Bool.self, forKey: .migrated) ?? true
     }
-    enum Keys: String, CodingKey { case version, bearer, approvals, remote, migrated }
+    enum Keys: String, CodingKey { case version, bearer, approvals, remote, machines, migrated }
 
-    var isEmpty: Bool { bearer == nil && approvals == nil && remote.isEmpty }
+    var isEmpty: Bool { bearer == nil && approvals == nil && remote.isEmpty && machines.isEmpty }
 }
 
 public final class KeychainVault: @unchecked Sendable {
@@ -242,4 +245,19 @@ public final class KeychainTokenStore: TokenStore, @unchecked Sendable {
         do { try vault.mutate { if slot == .bearer { $0.bearer = nil } else { $0.approvals = nil } }; return true }
         catch { return false }
     }
+}
+
+/// The MCP sign-in for another machine (spec 15), as a view of the vault.
+public final class KeychainMachineStore: MachineCredentialStore, @unchecked Sendable {
+    private let vault: KeychainVault
+    public init(vault: KeychainVault) { self.vault = vault }
+    public func load(environmentId: String) -> MachineCredential? {
+        guard let c = vault.read({ $0.machines[environmentId] }), c.environmentId == environmentId else { return nil }
+        return c
+    }
+    public func save(_ c: MachineCredential) throws { try vault.mutate { $0.machines[c.environmentId] = c } }
+    @discardableResult public func delete(environmentId: String) -> Bool {
+        do { try vault.mutate { $0.machines[environmentId] = nil }; return true } catch { return false }
+    }
+    public func environmentIds() -> [String] { vault.read { $0.machines.keys.sorted() } }
 }

@@ -19,15 +19,22 @@ extension HuddleModel {
 
     // MARK: Availability
 
-    /// T3 offers `t3_thread_send` with a `mode` argument. Without it the Message button is hidden.
+    /// This Mac's T3 offers `t3_thread_send` with a `mode` argument.
     public var canSendMessages: Bool {
         toolNames.contains("t3_thread_send") && (toolArguments["t3_thread_send"]?.contains("mode") ?? false)
     }
 
+    /// The thread's own machine offers `t3_thread_send` with a `mode` argument.
+    public func canSendMessages(to s: Session) -> Bool {
+        let t = tools(for: s)
+        return t.names.contains("t3_thread_send") && (t.args["t3_thread_send"]?.contains("mode") ?? false)
+    }
+
     /// A thread that asks for something gets that first (answer, permission, secret); a message would only queue behind it.
-    /// A thread on a linked machine has no composer: live T3 refuses sends to it through this Mac (`capability_denied`).
+    /// A thread shown only through a link has no composer: live T3 refuses sends that way (`capability_denied`); connecting
+    /// its machine directly (spec 15) gives it one.
     public func canMessage(_ s: Session) -> Bool {
-        canSendMessages && s.question == nil && s.permission == nil && s.secretPrompt == nil && env(s.threadId) == nil
+        canSendMessages(to: s) && s.question == nil && s.permission == nil && s.secretPrompt == nil && !isLinkedOnly(s)
     }
 
     /// Steering needs a turn in progress, as T3 reports it (not the panel's inferred "working").
@@ -91,7 +98,7 @@ extension HuddleModel {
         }
         guard canMessage(s) else { return }
         composeStates[threadId] = .sending           // before the first await, so a double click cannot pass the guard twice
-        guard let client = try? await ensureClient() else {
+        guard (try? await onMachine(threadId, { c, _ in c })) != nil else {
             composeStates[threadId] = .error("Couldn’t reach T3 Code. Nothing was sent."); return
         }
         let environment = env(threadId)
@@ -99,7 +106,7 @@ extension HuddleModel {
         if mode == .steer && !canSteer(s) { mode = .queue }
         if mode == .steer {
             // The list can be a poll old: steer only a turn T3 says is running now. Otherwise send nothing and say so.
-            let now = try? await client.threadStatus(threadId: threadId, environment: environment)
+            let now = try? await onMachine(threadId) { c, env in try await c.threadStatus(threadId: threadId, environment: env) }
             guard now == .running else {
                 sendModes[threadId] = .queue
                 composeStates[threadId] = nil
@@ -109,11 +116,11 @@ extension HuddleModel {
             }
         }
         // One id per exact message: a retry of the same text and mode reuses it; an edit or a flipped mode gets a new one.
-        let fingerprint = [threadId, environment ?? "", mode.rawValue, text].joined(separator: "\u{1F}")
+        let fingerprint = [threadId, environment ?? directMachine(of: threadId) ?? "", mode.rawValue, text].joined(separator: "\u{1F}")
         let requestId = pendingSends[threadId].flatMap { $0.fingerprint == fingerprint ? $0.id : nil } ?? UUID().uuidString
         pendingSends[threadId] = (fingerprint, requestId)
         do {
-            try await client.sendMessage(threadId: threadId, message: text, mode: mode, clientRequestId: requestId, environment: environment)
+            try await onMachine(threadId) { c, env in try await c.sendMessage(threadId: threadId, message: text, mode: mode, clientRequestId: requestId, environment: env) }
             pendingSends[threadId] = nil
             composer.drafts[key] = nil
             composeStates[threadId] = nil
@@ -144,17 +151,17 @@ extension HuddleModel {
     }
 
     public func sendWrittenAnswer(threadId: String) async {
-        guard let q = state.sessions[threadId]?.question, q.freeTextAnswerable, questionStates[q.requestId] != .sending else { return }
+        guard let s = state.sessions[threadId], canAnswer(s), let q = s.question, q.freeTextAnswerable, questionStates[q.requestId] != .sending else { return }
         guard !readOnly else { questionStates[q.requestId] = .error("Read-only mode. Turn it off in the menu to send."); return }
         let key = ComposerStore.answerKey(q.requestId)
         let text = composer.text(key)
         guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, text.count <= Self.maxMessageLength else { return }
         questionStates[q.requestId] = .sending
-        guard let client = try? await ensureClient() else {
+        guard (try? await onMachine(threadId, { c, _ in c })) != nil else {
             questionStates[q.requestId] = .error("Couldn’t reach T3 Code. Nothing was sent."); return
         }
         do {
-            try await client.respond(question: q, selection: text, environment: env(threadId))
+            try await onMachine(threadId) { c, env in try await c.respond(question: q, selection: text, environment: env) }
             justAnswered[threadId] = Date()
             questionStates[q.requestId] = nil
             selections[q.requestId] = nil
@@ -185,7 +192,8 @@ extension HuddleModel {
     public static let otherMachineDeniedMessage = "T3 won’t take this from Agent Huddle for a thread on another machine. Open it with ↗ and send it in T3 Code there."
 
     static func oneLine(_ error: Error) -> String {
-        let msg = (error as? HuddleError)?.description ?? error.localizedDescription
+        let e = (error as? MachineFailure)?.underlying ?? error
+        let msg = (e as? HuddleError)?.description ?? e.localizedDescription
         if msg.contains("runtime_mode_escalation_denied") { return modeDeniedMessage }
         if msg.contains("capability_denied") { return otherMachineDeniedMessage }
         return String(DisplayText.clean(msg).prefix(120))

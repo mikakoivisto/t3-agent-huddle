@@ -12,6 +12,8 @@ var access = "approval-required"   // read + operate scopes; never full-access
 var runHuddle = false
 var sendCheck: (steer: String, question: String)?
 var sendRaw: (thread: String, mode: SendMode, environment: String?)?
+var remoteMCP: String?
+var remoteSend: (steer: String, question: String)?
 var remoteCheck: (address: String, environmentId: String)?
 var describe: [String] = []
 var calls: [(String, JSON)] = []
@@ -30,6 +32,10 @@ while let a = it.next() {
         guard let t = it.next(), let m = it.next().flatMap(SendMode.init(rawValue:)) else { fail("--send-raw THREAD queue|steer [ENVIRONMENT_ID]") }
         sendRaw = (t, m, nil)
     case "--env": if sendRaw != nil { sendRaw!.environment = it.next() }
+    case "--remote-send":   // with --remote-mcp: steer + queue to STEER, written answer to QUESTION (throwaway threads on that machine)
+        guard let st = it.next(), let q = it.next() else { fail("--remote-send STEER_ID QUESTION_ID") }
+        remoteSend = (st, q)
+    case "--remote-mcp": remoteMCP = it.next()   // spec 15: sign in to a machine's MCP over https (the pairing code is made on THAT machine)
     case "--huddle": runHuddle = true   // run the real HuddleModel against live T3 (read-only) and print what the panel would show
     case "--call":
         guard let name = it.next(), let json = it.next(), let j = try? JSON.parse(json) else { fail("--call TOOL JSON") }
@@ -73,6 +79,49 @@ let opener: @Sendable (URL) -> Void = { url in
             FileHandle.standardError.write(Data("decision(\(tag)) -> HTTP \(status)\n".utf8))   // status only: a server may echo a secret in its body
         }
     }
+}
+
+if let address = remoteMCP {
+    do {
+        let origin = try RemoteOriginPolicy.production.validate(address)
+        let found = try await RemoteIdentity.identify(origin: origin)
+        print("REMOTE identify: \(found.label ?? "-") env=\(found.environmentId.prefix(8))… at \(origin.host)")
+        let verified = try await RemoteIdentity.verify(origin: origin, expectedEnvironmentId: found.environmentId)
+        let ro = try OAuthClient(remote: verified, log: log, opener: opener, timeout: 30)
+        let r = try await ro.authorize()
+        print("REMOTE oauth: ok (token received, expires_in=\(r.expiresIn.map(String.init) ?? "?"))")
+        let rc = try MCPClient(remote: verified, token: r.accessToken, log: log)
+        let rt = try await rc.toolsList()
+        print("REMOTE tools: \((rt["tools"].array ?? []).count), contract check: \(ContractCheck.verify(toolsList: rt) ?? "ok")")
+        let env = try await rc.localEnvironment()
+        print("REMOTE environment: \(env.label) \(env.id.prefix(8))… (matches identify: \(env.id == verified.environmentId))")
+        let threads = try await rc.listThreads(statuses: T3Status.activeStatuses + T3Status.finishedStatuses, limit: 20)
+        print("REMOTE threads listed: \(threads.count)")
+        for (name, args) in calls {
+            print("\n> \(name) \(args.text())")
+            do { print(log.scrub((try await rc.callTool(name, args)).text())) } catch { print(log.scrub("ERROR: \(error)")) }
+        }
+        if let rs = remoteSend {
+            let st = try await rc.threadStatus(threadId: rs.steer)
+            print("REMOTE steer target status: \(st.rawValue)")
+            for (mode, text) in [(SendMode.steer, "REMOTE STEER TEST from Agent Huddle: say 'remote steer received' and keep going."),
+                                 (SendMode.queue, "REMOTE QUEUE TEST from Agent Huddle: reply 'remote queue received'.")] {
+                do { try await rc.sendMessage(threadId: rs.steer, message: text, mode: mode, clientRequestId: UUID().uuidString); print("REMOTE \(mode.rawValue): ok") }
+                catch { print(log.scrub("REMOTE \(mode.rawValue) error: \(error)")) }
+            }
+            var q: Question?
+            for _ in 0..<30 {
+                if let rid = try? await rc.pendingRequestIds(threadId: rs.question).first, let qq = try? await rc.readQuestion(threadId: rs.question, requestId: rid) { q = qq; break }
+                try? await Task.sleep(nanoseconds: 3_000_000_000)
+            }
+            if let q {
+                do { try await rc.respond(question: q, selection: "Blue (written answer over the remote MCP)"); print("REMOTE written answer: ok (options \(q.options.map(\.label)))") }
+                catch { print(log.scrub("REMOTE answer error: \(error)")) }
+            } else { print("REMOTE question: none appeared") }
+        }
+    } catch { print(log.scrub("REMOTE error: \(error)")) }
+    print("\n(probe done)")
+    exit(0)
 }
 
 let oauth = try OAuthClient(mcpEndpoint: endpoint, log: log, opener: opener, timeout: 30)
