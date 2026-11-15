@@ -528,6 +528,9 @@ public struct Preferences: Codable, Equatable, Sendable {
     /// Public (non-secret) OAuth client registration, reused while the redirect port is unchanged.
     public var oauthClientId: String?
     public var oauthPort: UInt16?
+    /// Spec 14. Optional so a preferences file from an earlier version still loads.
+    public var showPanelOnAttention: Bool?
+    public var settingsOnTop: Bool?
     public init() {}
 }
 

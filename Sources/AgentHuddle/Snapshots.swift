@@ -76,30 +76,18 @@ enum DemoHero {
     }
 }
 
-/// The inline-approvals window for the stills: this Mac on, several linked machines in different states, one setup open.
-/// Hostnames are invented (`*.tailnet-demo.ts.net`), not a real tailnet.
+/// The Machines tab with an approvals setup open, for the stills and the video. Hostnames are invented (`*.tailnet-demo.ts.net`).
 enum DemoApprovalsData {
     static let miniAddress = "https://mac-mini.tailnet-demo.ts.net"
-    static let studioA = "https://studio.tailnet-demo.ts.net", studioB = "https://studio.local:8443"
-    static func overview(open: String?) -> ApprovalsSnapshotData {
-        ApprovalsSnapshotData(
-            thisMacName: DemoScenario.macBook, thisMacOn: true,
-            machines: [
-                .init(id: "mini", name: DemoScenario.macMini, status: .on, saved: miniAddress, found: []),
-                .init(id: "render", name: "Render server", status: .needsRepair, saved: nil, found: ["https://render.tailnet-demo.ts.net"]),
-                .init(id: "studio", name: "Studio Mac", status: .off, saved: nil, found: [studioA, studioB]),
-                .init(id: "build", name: "Build box", status: .off, saved: nil, found: []),
-            ],
-            open: open, checks: ["studio|\(studioA)": .thisMachine, "studio|\(studioB)": .unreachable], chosen: studioA)
-    }
-    /// The window as the model sees it right now (this Mac and the Mac mini only), with `open` as the row being set up.
-    @MainActor static func live(_ model: HuddleModel, open: String?, found: [String] = []) -> ApprovalsSnapshotData {
-        ApprovalsSnapshotData(
-            thisMacName: DemoScenario.macBook, thisMacOn: model.inlineApprovals,
-            machines: model.approvalMachines.map { m in
-                .init(id: m.id, name: m.label, status: model.remoteApprovalStatus(m.id), saved: model.savedAddress(forEnvironment: m.id), found: found)
-            },
-            open: open, checks: found.reduce(into: [:]) { acc, a in for m in model.approvalMachines { acc["\(m.id)|\(a)"] = .thisMachine } }, chosen: found.first)
+    /// `open` is ApprovalSetup.thisMac or a machine id; a machine's setup shows `address` as typed and checked (display only).
+    @MainActor static func setup(_ model: HuddleModel, open: String?, address: String? = nil) -> ApprovalSetup {
+        let s = ApprovalSetup(model: model)
+        s.open = open
+        if let open, let address, open != ApprovalSetup.thisMac {
+            s.typed[open] = address; s.trustTyped[open] = true
+            s.checks[ApprovalSetup.checkKey(open, address)] = .thisMachine
+        }
+        return s
     }
 }
 
@@ -153,6 +141,8 @@ enum Snapshots {
         DemoScenario.addBenchPermission((b.local, b.mini))
         await b.enableThisMac(); await b.refresh()
         save(ids: [DemoScenario.bench], b.model, "16-inline-approvals-machine-not-set-up", dir)
+        machinesTab(model: b.model, "21-inline-approvals-window-setup",
+                    setup: DemoApprovalsData.setup(b.model, open: DemoScenario.miniEnv, address: DemoApprovalsData.miniAddress), dir)
         b.stop()
 
         // C. Both machines on: Allow / Deny on each, read-only, a refused decision, and the thread carrying on.
@@ -178,8 +168,7 @@ enum Snapshots {
         await cm.decideApproval(threadId: DemoScenario.bench, requestId: Scenario.remoteRequestId,
                                 summary: cm.state.sessions[DemoScenario.bench]?.permission?.summary, decision: .decline)
         save(ids: [DemoScenario.bench], cm, "19-inline-approvals-after-deny", dir)
-        approvalsWindow(model: cm, "20-inline-approvals-window", data: DemoApprovalsData.overview(open: nil), dir)
-        approvalsWindow(model: cm, "21-inline-approvals-window-setup", data: DemoApprovalsData.overview(open: "studio"), dir)
+        machinesTab(model: cm, "20-inline-approvals-window", setup: DemoApprovalsData.setup(cm, open: nil), dir)
         c.stop()
 
         // E. Write and send (spec 13): written answers, the composer, queue / steer, the pop-out editor.
@@ -251,7 +240,7 @@ enum Snapshots {
                                                   preferences: PreferencesStore(directory: prefs.appendingPathComponent("f"))))
         await mm.refresh(); await mm.refresh()
         save(mm, "44-machines-panel", dir)
-        write(MachinesView(model: mm, flow: AddMachineFlow()).environment(\.snapshotMode, true), "45-machines-window", dir, scale: 2)
+        machinesTab(model: mm, "45-machines-window", setup: ApprovalSetup(model: mm), dir)
         let flow = AddMachineFlow()
         flow.start(address: "http://127.0.0.1:\(fm.port)")
         _ = machines.delete(environmentId: DemoScenario.miniEnv)            // as if the Mac mini were not connected yet
@@ -264,6 +253,34 @@ enum Snapshots {
         write(AddMachineCard(model: addModel, flow: flow).frame(width: 508).padding(16).background(Theme.panel).environment(\.snapshotMode, true),
               "46-machines-add", dir, scale: 2)
         fl.stop(); fm.stop()
+
+        // H. Attention indicator and Settings (spec 14).
+        let h = await DemoRig.make(prefs: prefs.appendingPathComponent("h"))
+        DemoScenario.start(h.local); DemoScenario.addQuestion(h.local); DemoScenario.addTriagePermission(h.local)
+        await h.refresh()
+        let hm = h.model
+        let bars = HStack(spacing: 18) {
+            ForEach([(Color(white: 0.91), Color.black), (Color(white: 0.15), Color.white)], id: \.0) { bg, fg in
+                HStack(spacing: 14) {
+                    Text(verbatim: "Wi-Fi").font(.system(size: 13)).foregroundStyle(fg.opacity(0.7))
+                    MenuBarGlyph(count: 4, frame: 1, size: 18, attention: hm.attentionSessions.count, tint: fg)
+                    Text(verbatim: "Sun 14:52").font(.system(size: 13, weight: .medium)).foregroundStyle(fg.opacity(0.8))
+                }.padding(.horizontal, 14).frame(height: 30).background(RoundedRectangle(cornerRadius: 7).fill(bg))
+            }
+        }.padding(16).background(Color(white: 0.06))
+        write(bars, "50-attention-menu-bar", dir, scale: 2)
+        save(ids: [DemoScenario.render, DemoScenario.docs], hm, "51-attention-header-pill", dir)
+        hm.toggleCollapsed()
+        save(hm, "52-attention-collapsed", dir)
+        hm.toggleCollapsed()
+        hm.openDetail(DemoScenario.render); await h.refresh()
+        save(hm, "53-attention-detail", dir)
+        hm.back()
+        let sel = SettingsSelection()
+        write(SettingsView(model: hm, selection: sel, flow: AddMachineFlow(), setup: ApprovalSetup(model: hm)).environment(\.snapshotMode, true), "54-settings-general", dir, scale: 2)
+        sel.tab = .machines
+        write(SettingsView(model: hm, selection: sel, flow: AddMachineFlow(), setup: DemoApprovalsData.setup(hm, open: ApprovalSetup.thisMac)).environment(\.snapshotMode, true), "55-settings-machines", dir, scale: 2)
+        h.stop()
 
         // D. Closing, the collapsed header, a jump that cannot be delivered, and T3 going away.
         let d = await DemoRig.make(prefs: prefs.appendingPathComponent("d"))
@@ -311,9 +328,9 @@ enum Snapshots {
         write(strip, "02-menu-bar-robot-frames", dir, scale: 2)
     }
 
-    /// The inline-approvals window as a still.
-    @MainActor static func approvalsWindow(model: HuddleModel, _ name: String, data: ApprovalsSnapshotData, _ dir: URL) {
-        write(ApprovalsView(model: model, snapshot: data).environment(\.snapshotMode, true), name, dir, scale: 2)
+    /// The Settings window's Machines tab as a still, with the approvals setup state given.
+    @MainActor static func machinesTab(model: HuddleModel, _ name: String, setup: ApprovalSetup, _ dir: URL) {
+        write(MachinesView(model: model, flow: AddMachineFlow(), setup: setup).environment(\.snapshotMode, true), name, dir, scale: 2)
     }
 
     static func write<V: View>(_ view: V, _ name: String, _ dir: URL, scale: CGFloat = 2) {

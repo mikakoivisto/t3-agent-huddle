@@ -15,6 +15,7 @@
 - **Idle** (no working visible thread): a still glyph with no number, square item width, tooltip "Agent Huddle" (set when the count returns to 0; none at launch, because the tooltip is only written when the count changes).
 - **Working** (at least one): the item widens, shows `" N"` in a monospaced-digit 12 pt semibold font, tooltip "N running", and animates four frames at 0.25 s: the body hops on odd frames, the feet alternate, the eyes look side to side.
 - **Reduce Motion:** with the system setting on, the first frame is shown and no timer runs.
+- **Something needs you** (spec 14): while a visible thread asks a question, needs permission or asks for a secret, the number is replaced by an orange badge with that count (a colour image beside the template robot, so the robot still tints and walks); the tooltip says "2 need you · 3 running".
 - **N** counts visible (not closed) sessions that are working: T3-active, waiting on a subagent, or waiting on a background task (spec 02). It differs from the header count, which counts every visible row including done ones.
 
 ### The menu
@@ -23,15 +24,10 @@ In order:
 
 1. **Show / Hide Agent Huddle:** toggles the panel for this launch. The label does not change.
 2. separator
-3. **Read-only mode (no answering):** checkmark; persisted. Blocks Send, Allow, Deny and settle (spec 08).
-4. **Close also settles finished threads in T3:** checkmark; persisted; off by default (spec 01).
-5. **Machines…:** opens the Machines window (spec 15): each machine's sign-in and Sign out, its Allow / Deny state (Set up… opens the Inline approvals window, specs 06 and 07), and Add machine.
-6. (removed: "Inline approvals…" and "Sign Out of T3 Code…" moved into Machines…)
-7. separator
-8. **About Agent Huddle:** the standard About panel with the app name, copyright "© 2026 Mika Koivisto — MIT License", a short description ("independent project, not affiliated with or endorsed by T3 Tools") and the full MIT licence text as credits.
-9. **Quit Agent Huddle** (⌘Q).
-
-Checkmarks are refreshed each time the menu opens.
+3. **Settings… (⌘,):** the Settings window (spec 14): General (Show the panel when something needs me, Chime, Read-only mode, Close also settles, Keep this window on top) and Machines (spec 15). It floats above other apps while open unless "Keep this window on top" is off. The settings that used to be checkmarks here, and "Machines…", moved into it.
+4. separator
+5. **About Agent Huddle:** the standard About panel with the app name, copyright "© 2026 Mika Koivisto — MIT License", a short description ("independent project, not affiliated with or endorsed by T3 Tools") and the full MIT licence text as credits.
+6. **Quit Agent Huddle** (⌘Q).
 
 ### Removed items
 

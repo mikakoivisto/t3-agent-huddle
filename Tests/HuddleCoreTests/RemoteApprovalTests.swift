@@ -359,7 +359,7 @@ struct RemoteApprovalTests {
         #expect(model.machineName(for: s) == "Studio Mac")
         await model.decideApproval(threadId: Self.thread, requestId: Self.rid, summary: s.permission?.summary, decision: .accept)
         #expect(m.remote.wsUpgrades == 0 && m.local.decisions.isEmpty)
-        if case .error(let msg) = model.approvalStates[Self.thread] { #expect(msg.contains("Studio Mac") && msg.contains("aren’t set up")) } else { Issue.record("expected an error") }
+        if case .error(let msg) = model.approvalStates[Self.thread] { #expect(msg.contains("Studio Mac") && msg.contains("isn’t set up")) } else { Issue.record("expected an error") }
     }
 
     @Test @MainActor func thisMacsThreadsStillUseThisMacsCredentialWhenARemoteOneExists() async throws {

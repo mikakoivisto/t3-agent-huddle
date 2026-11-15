@@ -19,7 +19,7 @@ A small floating macOS panel and menu-bar item that shows what your [T3 Code](ht
 
 1. Get the app (build it with `scripts/build-app.sh`, or take the zip from a release) and open it: [Install and connect](docs/install.md). It is ad-hoc signed, so macOS needs one extra step the first time.
 2. Click **Connect to T3 Code** and approve the sign-in in T3.
-3. Optional: connect your other machines (menu bar → Machines…): [Other machines](docs/other-machines.md).
+3. Optional: connect your other machines (menu bar → Settings… → Machines): [Other machines](docs/other-machines.md).
 4. Optional: Allow / Deny in the panel: [Inline approvals](docs/inline-approvals.md).
 
 ## Documentation

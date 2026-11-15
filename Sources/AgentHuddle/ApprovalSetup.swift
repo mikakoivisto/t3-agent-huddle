@@ -33,7 +33,7 @@ struct ApprovalButtons: View {
                     if model.readOnly { note("Read-only mode — decide in T3 Code") }
                     else if !commandVisibleInFull { note("Show the full command to enable Allow.") }
                 } else if !model.isOnThisMac(session) && model.approvalRoute(for: session) == nil {
-                    note("Inline approvals aren’t set up for \(model.machineName(for: session)). Menu bar → “Inline approvals…”, or decide in T3 Code.")
+                    note("Approving commands from the panel isn’t set up for \(model.machineName(for: session)). Settings → Machines, or decide in T3 Code.")
                 } else {
                     note("This request can’t be approved here — decide in T3 Code")
                 }

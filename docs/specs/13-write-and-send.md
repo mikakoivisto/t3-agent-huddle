@@ -1,6 +1,6 @@
 # 13 — Write an answer, send a message, steer a run
 
-**Status:** built (phase 1 of 2) · **Evidence:** `SendTests` against the fake, and one live pass on 2026-11-15 (`scripts/live-check.sh --send-check`, the real `HuddleModel` against the real T3, two throwaway threads): a steer reached the running turn, a queued message started the next turn, and a written answer to a question with options reached the agent word for word. The editors themselves (typing, focus, keys) have not been checked by hand. Phase 2 (dictation) is [spec 14](14-dictation.md).
+**Status:** built · **Evidence:** `SendTests` against the fake, and one live pass on 2026-11-15 (`scripts/live-check.sh --send-check`, the real `HuddleModel` against the real T3, two throwaway threads): a steer reached the running turn, a queued message started the next turn, and a written answer to a question with options reached the agent word for word. The editors themselves (typing, focus, keys) have not been checked by hand. Phase 2 (dictation) is [spec 14](14-dictation.md).
 
 ## Purpose and user value
 
@@ -19,7 +19,7 @@ These change existing hard rules, so they are listed first.
 | D3 | Where the composer opens. | Inside the panel, under the row or at the bottom of the detail view. The panel can already take keyboard focus without activating the app (the paste-a-token field does). No separate window. |
 | D4 | Default mode for a running thread. | **Queue**, with **Steer** one click away on the button itself. Steering changes the current turn, so it is the deliberate choice. |
 | D5 | How the send button switches between Queue and Steer (no separate control). | **Decided: a swap toggle (⇄) on the button.** One click flips Queue ↔ Steer; Steer is orange. ⌥⌘↩ steers directly. |
-| D6 | The bigger editor for long text (dictation especially). | **Decided: a pop-out window**, resizable and wider than the panel, sharing the draft with the small field. |
+| D6 | The bigger editor for long text. | **Decided: a pop-out window**, resizable and wider than the panel, sharing the draft with the small field. |
 
 ## Behaviour (proposed)
 
@@ -40,7 +40,7 @@ These change existing hard rules, so they are listed first.
 - **Opens in place:** under the row in the list, or pinned to the bottom of the detail view. One composer at a time; opening another closes the first (its draft is kept, below).
 - **Parts:** a multi-line text field (grows to 6 lines, then scrolls) with an **expand** button in its corner, the target line ("To *Render release notes* · Mac mini"), the send button, and **Cancel**.
 - **The send button says what it will do:** **Send** when T3 does not report the thread as active, **Queue** when it does. Only while T3 reports it `running` does the button carry the ⇄ toggle that flips it to **Steer** (orange). There is no separate mode control. One short line under the field repeats the effect: "Sent after the current turn finishes." / "Reaches the agent during this turn."
-- **Expand:** opens the same draft in a pop-out editor window (resizable, wider than the panel, titled with the thread and machine) with the same send button. Phase 2 adds the microphone there. Closing it returns to the small field with the text kept.
+- **Expand:** opens the same draft in a pop-out editor window (resizable, wider than the panel, titled with the thread and machine) with the same send button. Closing it returns to the small field with the text kept.
 - **Keys:** ⌘↩ sends with the button's current mode, ⌥⌘↩ steers directly (only while running), Esc cancels, ↩ is a new line. Cut, copy, paste, select all and undo work in both editors.
 - **Send is enabled** when the text has a non-space character, is at most 20,000 characters, the thread is still there, and read-only mode is off. A counter appears from 18,000 characters.
 - **Focus:** opening the composer makes the panel key so you can type; the app you were in stays active. Cancel or Send ends editing in the panel; click back into your app to type there.
@@ -107,7 +107,7 @@ Snapshots: stills 34–43 (`--snapshot`).
 
 
 - **SND-Q1 (needs a live pass):** does T3 accept a free-text answer to a question that has options, and for which harnesses? If not, **Write answer** shows only for questions that allow free text.
-- **SND-Q2:** should a queued message be visible on the row ("1 queued") using `t3_queue list`? Out of scope for phase 1; it would add a read-only tool.
+- **SND-Q2:** should a queued message be visible on the row ("1 queued") using `t3_queue list`? Out of scope; it would add a read-only tool.
 - **SND-Q3 (answered 2026-11-15):** no. A send from the MacBook's app to a thread on the Mac mini was refused with `capability_denied`. Whether a different link access level changes that is unknown; whether a question answer on a linked machine is refused too has not been tried.
 - **SND-Q4:** attachments (images, files) are out of scope.
 

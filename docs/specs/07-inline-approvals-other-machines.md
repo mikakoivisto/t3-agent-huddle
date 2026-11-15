@@ -9,9 +9,9 @@
 
 ## Behaviour as built
 
-### The Inline approvals window
+### Where it is set up
 
-Menu-bar item **Inline approvals…** opens one window (540 pt wide, resizable in height, minimum 360 pt). It lists:
+*Since spec 14:* in the Settings window's **Machines** tab, each machine's line **Approve commands from the panel** (state chip On / Off / Needs re-pairing / Setting up) opens the setup below in place; **Turn off** works in place too, and "Find addresses…" sits at the bottom of the tab. The separate Inline approvals window is gone. The rows and steps below are the same, now inside each machine's row:
 
 - **This Mac** row: spec 06.
 - **Linked machines**: every linked machine, plus any machine that still has a saved login but is no longer linked (label "Unlinked machine (xxxxxxxx…)", so its login can still be removed).
@@ -97,7 +97,7 @@ Same rules as spec 06 (explicit click, no default button, never in Read-only mod
 ### What the panel shows
 
 - **Machine set up:** Allow and Deny as in spec 06.
-- **Thread on a machine with no credential, once any inline approval is on:** "Inline approvals aren't set up for <machine name>. Menu bar → "Inline approvals…", or decide in T3 Code.". Review in T3 Code works.
+- **Thread on a machine with no credential, once any inline approval is on:** "Approving commands from the panel isn't set up for <machine name>. Settings → Machines, or decide in T3 Code.". Review in T3 Code works.
 - **Everything off:** the panel is unchanged.
 - **Remote-only setup:** this Mac's permission rows are unchanged (no hint, no buttons).
 

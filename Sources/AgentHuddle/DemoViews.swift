@@ -10,11 +10,14 @@ struct MenuBarGlyph: View {
     var count: Int
     var frame: Int
     var size: CGFloat = 18
+    var attention = 0
+    var tint: Color = .white
     var body: some View {
         let icon = count > 0 ? StatusItemController.menuBarIcon(size: size, frame: frame % 4) : StatusItemController.menuBarIcon(size: size)
         HStack(spacing: 4) {
-            Image(nsImage: icon).renderingMode(.template).foregroundColor(.white)
-            if count > 0 { Text(verbatim: "\(count)").font(.system(size: size * 0.67, weight: .semibold).monospacedDigit()).foregroundStyle(.white) }
+            Image(nsImage: icon).renderingMode(.template).foregroundColor(tint)
+            if attention > 0 { Image(nsImage: StatusItemController.badge(attention, height: size * 0.83)) }
+            else if count > 0 { Text(verbatim: "\(count)").font(.system(size: size * 0.67, weight: .semibold).monospacedDigit()).foregroundStyle(tint) }
         }
     }
 }
@@ -92,7 +95,7 @@ struct ModelIconLegend: View {
 enum DemoInset {
     case none
     case modelIcons
-    case approvals(ApprovalsSnapshotData)
+    case approvals(ApprovalSetup)
     case about(NSImage?, NSImage?)
 }
 
@@ -131,8 +134,8 @@ struct DemoFrameView: View {
         switch inset {
         case .none: EmptyView()
         case .modelIcons: ModelIconLegend()
-        case .approvals(let data):
-            ApprovalsView(model: model, snapshot: data).environment(\.snapshotMode, true)
+        case .approvals(let setup):
+            MachinesView(model: model, flow: AddMachineFlow(), setup: setup).environment(\.snapshotMode, true)
                 .clipShape(RoundedRectangle(cornerRadius: 14))
                 .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.white.opacity(0.1), lineWidth: 1))
         case .about(let about, let icon):

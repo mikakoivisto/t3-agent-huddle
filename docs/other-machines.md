@@ -22,7 +22,7 @@ T3 has to be reachable over https with a real certificate; the app refuses plain
 
 ## 2. Connect it
 
-1. Menu bar → **Machines…** → **Add machine…** (or **Another machine…** on the panel's Connect card).
+1. Menu bar → **Settings…** → **Machines** → **Add machine…** (or **Another machine…** on the panel's Connect card).
 2. Type the address (`<machine-name>.<tailnet>.ts.net`) and click **Check**. The app asks the machine what it is, sending nothing secret, and shows its name. Check it is the machine you mean.
 3. **On that machine**, run the pairing command the window shows (`t3 auth pairing create --scope orchestration:read --scope orchestration:operate --ttl 10m`).
 4. Click **Open sign-in page**. Your browser opens that machine's T3 page: paste the code and choose the access level its threads run at (usually **Auto**; see [Install](install.md#connect-to-t3-code)).

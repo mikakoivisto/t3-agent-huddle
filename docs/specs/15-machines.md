@@ -49,9 +49,9 @@ The panel's "Connect to T3 Code" card offers:
 - Threads are grouped by machine. A thread id seen on two machines is still ignored on the second (spec 12).
 - A linked-only machine's threads come through this Mac's T3 as today, read-only.
 
-### The Machines window (menu bar → Machines…)
+### The Machines window (menu bar → Settings… → Machines, spec 14)
 
-*As built:* the Allow / Deny line shows the machine's approvals state with **Set up…** / **Manage…**, which opens the existing Inline approvals window (spec 07) rather than folding its steps into the row; the sign-in level is not shown (MCH-Q1).
+*As built (spec 14):* this is the Settings window's Machines tab. Each machine shows two feature lines with a state chip and one button: **Connected** (the MCP sign-in: Sign out / Connect…) and **Approve commands from the panel** (inline approvals: Turn on… opens its setup in place, Turn off, Re-pair…). The sign-in level is not shown (MCH-Q1).
 
 One row per machine: name, address, how it is connected (This Mac · Connected · Linked only · Offline · Sign-in expired), its sign-in level when T3 reports it, and two switches: **Answers & messages** (the MCP sign-in) and **Allow / Deny** (inline approvals). Each row has **Sign out**. "Add machine…" at the bottom.
 

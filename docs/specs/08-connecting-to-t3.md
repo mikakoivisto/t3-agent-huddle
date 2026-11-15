@@ -44,7 +44,7 @@
 
 ### Sign out
 
-- **Machines… → Sign out** on this Mac's row (spec 15; formerly the menu item "Sign Out of T3 Code…"). A confirmation says what happens, then the token is deleted from the Keychain vault, the MCP client is dropped, the list is cleared and the panel shows **Connect to T3 Code** again, so a different access level can be chosen on the next sign-in (spec 13).
+- **Settings… → Machines → Sign out** on this Mac's row (spec 15; formerly the menu item "Sign Out of T3 Code…"). A confirmation says what happens, then the token is deleted from the Keychain vault, the MCP client is dropped, the list is cleared and the panel shows **Connect to T3 Code** again, so a different access level can be chosen on the next sign-in (spec 13).
 - **T3 keeps the session:** a client cannot revoke its own session, so the note under Connect says to run `t3 auth session list` and `t3 auth session revoke <id>` for Agent Huddle.
 - **Untouched:** the inline-approvals logins (their own Turn off), preferences, the OAuth client id (reused next time), drafts in memory.
 - **If the Keychain refuses** the delete, nothing else changes and the note says so.

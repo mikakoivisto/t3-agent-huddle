@@ -74,16 +74,16 @@ final class DemoRecorder {
         }
 
         // Opting in to inline approvals.
-        await beat("Opt in to inline approvals", "Menu bar → Inline approvals…. Each machine has its own login, made with a pairing code on that machine.",
-                   inset: .approvals(DemoApprovalsData.live(model, open: "this")), seconds: 3.5)
-        await beat("This Mac is on", "Allow and Deny appear under the command.", inset: .approvals(DemoApprovalsData.live(model, open: nil)), seconds: 2.5) {
+        await beat("Approve commands from the panel", "Settings → Machines. Each machine has its own login, made with a pairing code on that machine.",
+                   inset: .approvals(DemoApprovalsData.setup(model, open: ApprovalSetup.thisMac)), seconds: 3.5)
+        await beat("This Mac is on", "Allow and Deny appear under the command.", inset: .approvals(DemoApprovalsData.setup(model, open: nil)), seconds: 2.5) {
             await self.rig.enableThisMac(); await self.model.refresh()
         }
         await beat("The Mac mini is its own login", "Its thread is on the list, but without a login it only says so.",
-                   inset: .approvals(DemoApprovalsData.live(model, open: DemoScenario.miniEnv, found: [DemoApprovalsData.miniAddress])), seconds: 2.5) {
+                   inset: .approvals(DemoApprovalsData.setup(model, open: DemoScenario.miniEnv, address: DemoApprovalsData.miniAddress)), seconds: 2.5) {
             DemoScenario.addBenchPermission((self.local, self.rig.mini)); await self.model.refresh()
         }
-        await beat("Both machines on", inset: .approvals(DemoApprovalsData.live(model, open: nil)), seconds: 2) {
+        await beat("Both machines on", inset: .approvals(DemoApprovalsData.setup(model, open: nil)), seconds: 2) {
             await self.rig.enableMini(); await self.model.refresh()
         }
 
@@ -97,8 +97,7 @@ final class DemoRecorder {
         await beat("Deny: the command fails and the agent decides what next", seconds: 4, each: { i, _ in
             if i == 15 { await self.decide(DemoScenario.cleanup, DemoScenario.cleanupRequestId, .decline) }
         }) { self.scroll(0) }
-        await beat("Every machine at a glance", "On, off, or “needs re-pairing” after a revoked login.", inset: .approvals(DemoApprovalsData.overview(open: nil)), seconds: 3.5)
-        await beat("Several addresses? Each one is checked", "The setup steps open inside the machine’s row.", inset: .approvals(DemoApprovalsData.overview(open: "studio")), seconds: 3.5)
+        await beat("Every machine at a glance", "Connected, and approving commands, per machine.", inset: .approvals(DemoApprovalsData.setup(model, open: nil)), seconds: 3.5)
 
         // Closing.
         await beat("First tap on × arms a red Close pill", seconds: 1.8) {
