@@ -30,6 +30,7 @@ final class DemoRecorder {
     // MARK: Story
 
     func run() async {
+        await splash(seconds: 3.5)
         controller.setMaxHeight(Self.tall)
         DemoScenario.start(local)
         await model.refresh()
@@ -165,6 +166,23 @@ final class DemoRecorder {
         return image
     }
 
+    /// The opening card: the name and the list with a question and an inline permission waiting.
+    private func splash(seconds: Double) async {
+        let hero = await DemoHero.image(prefs: dir.appendingPathComponent("hero-prefs"))
+        let icon = appIcon()
+        let n = Int(seconds * 10)
+        for i in 0..<n {
+            writeFrame(SplashView(hero: hero, icon: icon, reveal: Double(i) / 8).environment(\.snapshotMode, true))
+        }
+    }
+
+    private func writeFrame<V: View>(_ canvas: V) {
+        let r = ImageRenderer(content: canvas); r.scale = 1.25
+        guard let cg = r.cgImage, let png = NSBitmapImageRep(cgImage: cg).representation(using: .png, properties: [:]) else { return }
+        try? png.write(to: dir.appendingPathComponent(String(format: "frames/f%04d.png", frame)))
+        frame += 1
+    }
+
     private func capture() {
         var panel = panelImage()
         if panel == nil { panel = panelImage() }
@@ -173,10 +191,7 @@ final class DemoRecorder {
         let working = model.sessions.filter(\.isWorking).count
         let canvas = DemoFrameView(panel: panel, model: model, caption: caption, sub: sub, inset: inset, count: working, frame: frame / 3)
             .environment(\.snapshotMode, true)
-        let r = ImageRenderer(content: canvas); r.scale = 1.25
-        guard let cg = r.cgImage, let png = NSBitmapImageRep(cgImage: cg).representation(using: .png, properties: [:]) else { return }
-        try? png.write(to: dir.appendingPathComponent(String(format: "frames/f%04d.png", frame)))
-        frame += 1
+        writeFrame(canvas)
     }
 
     private func writeStill(_ image: NSImage, _ name: String, onStage: Bool = false) {

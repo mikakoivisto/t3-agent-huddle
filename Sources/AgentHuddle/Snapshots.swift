@@ -51,6 +51,31 @@ final class DemoRig {
     }
 }
 
+/// The picture that opens the video and heads the stills: four agents, two per machine. On this Mac one asks a question; on
+/// the Mac mini one asks permission, with inline approvals on for that machine so Allow / Deny are there.
+@MainActor
+enum DemoHero {
+    static func makeRig(prefs: URL) async -> DemoRig {
+        let rig = await DemoRig.make(prefs: prefs)
+        DemoScenario.start(rig.local, only: [DemoScenario.docs, DemoScenario.scripts])
+        DemoScenario.addQuestion(rig.local)
+        DemoScenario.addBenchPermission((rig.local, rig.mini))
+        await rig.enableMini(); await rig.refresh(2)
+        return rig
+    }
+    static func canvas(_ model: HuddleModel) -> some View {
+        SnapshotCanvas(model: model, ids: nil, panels: true).environment(\.snapshotMode, true).environment(\.expandCommands, false)
+    }
+    /// For the splash card. Its own rig, stopped again before the story starts.
+    static func image(prefs: URL) async -> NSImage? {
+        let rig = await makeRig(prefs: prefs)
+        let r = ImageRenderer(content: canvas(rig.model)); r.scale = 2
+        let image = r.cgImage.map { NSImage(cgImage: $0, size: NSSize(width: $0.width / 2, height: $0.height / 2)) }
+        rig.stop()
+        return image
+    }
+}
+
 /// The inline-approvals window for the stills: this Mac on, several linked machines in different states, one setup open.
 /// Hostnames are invented (`*.tailnet-demo.ts.net`), not a real tailnet.
 enum DemoApprovalsData {
@@ -87,10 +112,12 @@ enum Snapshots {
         let prefs = FileManager.default.temporaryDirectory.appendingPathComponent("agent-huddle-snap-\(ProcessInfo.processInfo.processIdentifier)")
 
         // A. Approvals off (the default): the list, the detail, the waiting states, the question, the permission prompt.
+        let hero = await DemoHero.makeRig(prefs: prefs.appendingPathComponent("hero"))
+        write(DemoHero.canvas(hero.model), "01-list-two-machines", dir, scale: 2)
+        hero.stop()
         let a = await DemoRig.make(prefs: prefs.appendingPathComponent("a"))
         DemoScenario.start(a.local)
         await a.refresh()
-        save(a.model, "01-list-two-machines", dir)
         menuBar(dir)
         await a.populateEverything()
         save(ids: [DemoScenario.render, DemoScenario.docs, DemoScenario.changelog, DemoScenario.triage, DemoScenario.cleanup, DemoScenario.config, DemoScenario.scripts],

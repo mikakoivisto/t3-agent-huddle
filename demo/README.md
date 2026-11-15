@@ -6,7 +6,7 @@ The two machines are **Mika’s MacBook Pro** (plays "this Mac") and **Mika’s 
 
 ## Video
 
-[`agent-huddle-demo.mp4`](agent-huddle-demo.mp4): about 89 s, 1300×1000, H.264. The real floating panel on a stage with captions. [`agent-huddle-preview.gif`](agent-huddle-preview.gif) is its first 30 s, used inline in the README.
+[`agent-huddle-demo.mp4`](agent-huddle-demo.mp4): about 92 s, 1300×1000, H.264. A splash card with the name and that picture opens it, then the real floating panel on a stage with captions. [`agent-huddle-preview.gif`](agent-huddle-preview.gif) is its first 30 s, used inline in the README.
 
 ## Stills
 
@@ -14,7 +14,7 @@ The two machines are **Mika’s MacBook Pro** (plays "this Mac") and **Mika’s 
 
 | File | Shows |
 |---|---|
-| `01-list-two-machines` | The list grouped under the two machines, info line on each row |
+| `01-list-two-machines` | The opening picture: two machines, a question open on one and a permission with Allow / Deny on the other (four agents) |
 | `02-menu-bar-robot-frames` | The menu-bar buddy: idle, then its four animation frames with the count (**drawn on a strip**, not a screenshot of the menu bar) |
 | `03-model-icons-and-tooltip` | Rows on Claude, Codex, Qwen on pi, Grok and a letter badge, with the hover text (**the tooltips are drawn callouts**: a hover cannot be captured offscreen) |
 | `04-detail-info-and-steps` | Detail: project, branch, run time, model, steps; the running command's output |

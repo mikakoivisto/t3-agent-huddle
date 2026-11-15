@@ -46,23 +46,24 @@ public enum DemoScenario {
         return (local, mini)
     }
 
-    /// What is running when the video starts: two threads per machine, nothing asking for anything.
-    public static func start(_ s: FakeT3Server) {
-        s.add(T(id: render, title: "Render release notes", status: "running", items: [
+    /// What is running when the video starts: two threads per machine, nothing asking for anything. `only` keeps just those thread ids.
+    public static func start(_ s: FakeT3Server, only: Set<String>? = nil) {
+        func put(_ t: T) { if only?.contains(t.id) ?? true { s.add(t) } }
+        put(T(id: render, title: "Render release notes", status: "running", items: [
             Scenario.cmd(0, "cat RELEASES.md", output: "v2.4.0 — settings sync, faster search\nv2.3.1 — crash fix"),
             Scenario.tool(1, "Write notes-draft.md"),
             Scenario.cmd(2, "node scripts/render-notes.js --format html", output: "wrote out/notes.html (3 pages)"),
             Scenario.cmd(3, "npm test -- notes", output: "FAIL notes.render\n  expected 3 headings, found 2\n1 failing", status: "failed"),
             Scenario.cmd(4, "node scripts/render-notes.js --format pdf", output: "rendering page 95/139…", status: "running"),
         ], branch: "main", runningFor: 252, projectId: "proj_release"))
-        s.add(T(id: docs, title: "Update the docs site", status: "running", items: [
+        put(T(id: docs, title: "Update the docs site", status: "running", items: [
             Scenario.tool(0, "Read docs/index.md"), Scenario.tool(1, "Write docs/guide/install.md", status: "running"),
         ], model: "claude-opus-5-5", executedModel: "claude-sonnet-5-5", branch: "feat/docs-refresh", runningFor: 723, projectId: "proj_docs"))
-        s.add(T(id: config, title: "Refactor the config loader", status: "running", items: [
+        put(T(id: config, title: "Refactor the config loader", status: "running", items: [
             Scenario.cmd(0, "rg -n \"load_config\" src", output: "src/config.rs:41\nsrc/main.rs:12"),
             Scenario.tool(1, "Read src/config.rs"), Scenario.tool(2, "Edit src/config.rs", status: "running"),
         ], environmentId: miniEnv, providerInstanceId: "gemini", model: "gemini-3-pro", branch: "feat/config", runningFor: 318, projectId: "proj_cli"))
-        s.add(T(id: scripts, title: "Migrate the build scripts", status: "running", items: [
+        put(T(id: scripts, title: "Migrate the build scripts", status: "running", items: [
             Scenario.cmd(0, "ls scripts", output: "build.sh\nrelease.sh\nlint.sh"),
             Scenario.cmd(1, "bash scripts/lint.sh", status: "running"),
         ], environmentId: miniEnv, providerInstanceId: "grok", model: "grok-code-fast-1", runningFor: 96, projectId: "proj_cli"))

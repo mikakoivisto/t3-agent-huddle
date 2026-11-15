@@ -4,7 +4,7 @@ A small floating macOS panel and menu-bar item that shows what your [T3 Code](ht
 
 [![Agent Huddle demo: threads on two machines, a question, details](demo/agent-huddle-preview.gif)](demo/agent-huddle-demo.mp4)
 
-*Click for the full 89-second video. Made from a fake T3; [more screenshots](demo/).*
+*Click for the full 92-second video. Made from a fake T3; [more screenshots](demo/).*
 
 - **Every running thread in one place**, grouped by machine, with steps, run time, model and project.
 - **Answer a question** an agent asks without leaving what you are doing.

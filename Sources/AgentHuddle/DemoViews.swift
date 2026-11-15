@@ -154,3 +154,38 @@ struct PanelStill: View {
         }.fixedSize()
     }
 }
+
+/// The opening card of the video: the name, one line, and the list with a question and an inline permission waiting.
+struct SplashView: View {
+    var hero: NSImage?
+    var icon: NSImage?
+    /// 0...1 over the first moments: everything fades in.
+    var reveal: Double
+    var body: some View {
+        ZStack {
+            LinearGradient(colors: [Color(white: 0.04), Color(red: 0.07, green: 0.08, blue: 0.03)], startPoint: .top, endPoint: .bottom)
+            HStack(alignment: .center, spacing: 36) {
+                VStack(alignment: .leading, spacing: 16) {
+                    if let icon { Image(nsImage: icon).resizable().frame(width: 112, height: 112) }
+                    Text(verbatim: "Agent Huddle").font(.system(size: 68, weight: .bold, design: .serif)).foregroundStyle(.white)
+                        .lineLimit(1).minimumScaleFactor(0.6)
+                    Rectangle().fill(Theme.lime).frame(width: 84, height: 4)
+                    Text(verbatim: "Every running T3 Code thread, on every machine, in one floating panel.")
+                        .font(.system(size: 21)).foregroundStyle(Color(white: 0.72)).fixedSize(horizontal: false, vertical: true)
+                    Text(verbatim: "Answer a question. Allow or Deny a command. Jump to the thread.")
+                        .font(.system(size: 15)).foregroundStyle(Color(white: 0.5)).fixedSize(horizontal: false, vertical: true)
+                }
+                .frame(width: 470, alignment: .leading)
+                .opacity(min(1, reveal * 2.2)).offset(y: (1 - min(1, reveal * 2.2)) * 14)
+                if let hero {
+                    Image(nsImage: hero).resizable().scaledToFit().frame(maxHeight: 700)
+                        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+                        .shadow(color: .black.opacity(0.5), radius: 18, y: 8)
+                        .opacity(min(1, max(0, reveal * 2 - 0.3))).offset(y: (1 - min(1, max(0, reveal * 2 - 0.3))) * 20)
+                }
+            }
+            .padding(.horizontal, 44)
+        }
+        .frame(width: DemoFrameView.size.width, height: DemoFrameView.size.height)
+    }
+}
