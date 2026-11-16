@@ -28,8 +28,8 @@
    |---|---|
    | `CFBundleIdentifier` | `app.t3huddle.AgentHuddle` |
    | `CFBundleName`, `CFBundleDisplayName` | Agent Huddle |
-   | `CFBundleShortVersionString` | `$VERSION` (default `0.1.0`) |
-   | `CFBundleVersion` | `1` (fixed) |
+   | `CFBundleShortVersionString` | `$VERSION` (the release tag; a local build takes the newest `v*` tag) |
+   | `CFBundleVersion` | `$BUILD` (the commit count; the release checks out the full history) |
    | `LSMinimumSystemVersion` | 14.0 |
    | `LSUIElement` | true (no Dock icon) |
    | `NSHumanReadableCopyright` | Copyright © 2026 Mika Koivisto. MIT License. |
@@ -99,7 +99,7 @@ None.
 
 - **PKG-Q1 (owner: maintainer):** AGENTS.md forbids publishing while `release.yml` publishes on a tag. Keep the workflow dormant, or lift the rule when a remote exists?
 - **PKG-Q2:** the build script rewrites the tracked `assets/icon-1024.png` each time. Intended?
-- **PKG-Q3:** `CFBundleVersion` is fixed at `1`; Sparkle-style updates or notarization would need it to grow.
+- **PKG-Q3 (answered):** `CFBundleVersion` is the commit count, so it grows with every commit; a local build used to say 0.1.0 (1) whatever the release.
 - **PKG-Q4:** the shipped binary includes `FakeT3` and `Scenario` code and its launch modes. Split the app target to drop them?
 - **PKG-Q5:** `AppIcon.swift:3` says "four buddies"; the code draws one (`BuddyView(index: 0, …)`).
 - **PKG-Q6:** with the single vault item, is one prompt per new ad-hoc build what users see? Observe once more.
