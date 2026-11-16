@@ -25,9 +25,10 @@ notarize() {   # $1: a .zip or .dmg
 }
 
 codesign --verify --strict "$APP"
-codesign -dv "$APP" 2>&1 | grep -q "Authority=Developer ID Application" || { echo "notarize.sh: the app is not signed with a Developer ID" >&2; exit 1; }
+SIG="$(codesign -dv "$APP" 2>&1)"   # read it whole: a grep -q on a pipe would cut codesign off (and pipefail would fail)
+[[ "$SIG" == *"Authority=Developer ID Application"* ]] || { echo "notarize.sh: the app is not signed with a Developer ID" >&2; exit 1; }
 if [[ -n "${APPLE_TEAM_ID:-}" ]]; then   # the certificate must belong to this team
-  [[ "$(codesign -dv "$APP" 2>&1 | sed -n 's/^TeamIdentifier=//p')" == "$APPLE_TEAM_ID" ]] || { echo "notarize.sh: the signing team is not APPLE_TEAM_ID" >&2; exit 1; }
+  [[ "$(sed -n 's/^TeamIdentifier=//p' <<<"$SIG")" == "$APPLE_TEAM_ID" ]] || { echo "notarize.sh: the signing team is not APPLE_TEAM_ID" >&2; exit 1; }
 fi
 
 # 1. The app: submit the zip, staple the ticket to the app, zip it again so the download carries the ticket.
