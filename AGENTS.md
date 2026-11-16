@@ -12,7 +12,7 @@ swift build                                   # all targets, output in .build/
 swift test                                    # about 1 s, loopback fake only
 swift test --filter SecurityTests             # one suite, by struct name (not the @Suite title)
 .build/debug/AgentHuddle --snapshot DIR       # render every UI state to PNGs and exit
-scripts/build-app.sh                          # dist/Agent Huddle.app (icon, MIT license), ad-hoc signed
+scripts/build-app.sh                          # dist/Agent Huddle.app (icon, MIT license): Developer ID signed if one is in your keychain, else ad-hoc
 ```
 
 - **Toolchain:** Xcode with Swift 6.x on macOS 14+. The package builds in Swift 5 language mode (`swiftLanguageModes: [.v5]`).
@@ -24,6 +24,7 @@ scripts/build-app.sh                          # dist/Agent Huddle.app (icon, MIT
 
 - **`scripts/live-check.sh`** talks to the real T3 Code on this Mac. It mints a pairing credential and an OAuth session, then revokes both. With `--send-check STEER_ID QUESTION_ID` it sends a steer, a queued message and a written answer to those two threads: create throwaway threads for it (in approval-required mode; see spec 13) and archive them after. `--send-raw`, `--remote-mcp` (with `--access auto`) and `--remote-send` exercise one send and the other-machine MCP (spec 15) against this Mac's own https address; they send too.
 - **`scripts/live-check-remote.sh https://<this-mac>.<tailnet>.ts.net`** exercises the remote-machine path against this Mac's own https address. It mints two pairing credentials and revokes them and every session it created.
+- **`scripts/notarize.sh`** sends the app and a DMG to Apple for notarization (needs the notarization key; CI runs it on `build/**` branches and on release tags).
 - **`scripts/make-demo.sh`** deletes and regenerates the tracked binaries under `demo/`, and needs `ffmpeg`.
 - **Launching `AgentHuddle` with no flags** uses the real runtime file, the Keychain and the real jump.
 

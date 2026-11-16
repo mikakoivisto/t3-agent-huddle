@@ -39,3 +39,45 @@ jobs:
           name: AgentHuddle-${{ github.sha }}
           path: dist/AgentHuddle.zip
           if-no-files-found: error
+
+  # A dry run of the release's signing: push a build/** branch to sign, notarize and staple the app and the DMG without
+  # publishing anything. Pull requests never get the signing secrets.
+  sign-and-notarize:
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/heads/build/')
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Signing keychain
+        env:
+          MACOS_CERT_P12: ${{ secrets.MACOS_CERT_P12 }}
+          MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+          NOTARY_KEY_P8: ${{ secrets.NOTARY_KEY_P8 }}
+        run: scripts/ci-signing-keychain.sh setup
+
+      - name: Release build, Developer ID signed
+        run: scripts/build-app.sh
+
+      - name: Notarize and staple the app and the DMG
+        env:
+          NOTARY_KEY_ID: ${{ secrets.NOTARY_KEY_ID }}
+          NOTARY_ISSUER_ID: ${{ secrets.NOTARY_ISSUER_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: scripts/notarize.sh
+
+      - name: Upload signed packages
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: AgentHuddle-signed-${{ github.sha }}
+          path: |
+            dist/AgentHuddle.zip
+            dist/AgentHuddle.dmg
+          if-no-files-found: error
+
+      - name: Remove the signing keychain
+        if: always()
+        run: scripts/ci-signing-keychain.sh cleanup

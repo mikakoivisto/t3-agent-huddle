@@ -1,6 +1,6 @@
 name: Release
 
-# Push a tag like v0.2.0 to build, test and publish a GitHub release with the zipped app.
+# Push a tag like v0.2.0 to build, test, sign, notarize and publish a GitHub release with the DMG and the zipped app.
 on:
   push:
     tags: ["v*"]
@@ -21,19 +21,37 @@ jobs:
       - name: Test
         run: swift test
 
-      - name: Release build and package
+      - name: Signing keychain
+        env:
+          MACOS_CERT_P12: ${{ secrets.MACOS_CERT_P12 }}
+          MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+          NOTARY_KEY_P8: ${{ secrets.NOTARY_KEY_P8 }}
+        run: scripts/ci-signing-keychain.sh setup
+
+      - name: Release build, Developer ID signed
         env:
           TAG: ${{ github.ref_name }}
         run: VERSION="${TAG#v}" scripts/build-app.sh
 
-      - name: Checksum
+      - name: Notarize and staple the app and the DMG
+        env:
+          NOTARY_KEY_ID: ${{ secrets.NOTARY_KEY_ID }}
+          NOTARY_ISSUER_ID: ${{ secrets.NOTARY_ISSUER_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: scripts/notarize.sh
+
+      - name: Remove the signing keychain
+        if: always()
+        run: scripts/ci-signing-keychain.sh cleanup
+
+      - name: Checksums
         working-directory: dist
-        run: shasum -a 256 AgentHuddle.zip > AgentHuddle.zip.sha256
+        run: shasum -a 256 AgentHuddle.zip AgentHuddle.dmg > SHA256SUMS
 
       - name: Publish release
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
         run: |
-          gh release create "$TAG" dist/AgentHuddle.zip dist/AgentHuddle.zip.sha256 \
+          gh release create "$TAG" dist/AgentHuddle.dmg dist/AgentHuddle.zip dist/SHA256SUMS \
             --title "Agent Huddle $TAG" --generate-notes --verify-tag

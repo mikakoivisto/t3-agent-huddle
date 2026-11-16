@@ -4,12 +4,12 @@
 
 Needs a Mac with **Apple silicon** (the build is arm64 only) and macOS 14 or later.
 
-1. Unzip `AgentHuddle.zip` and move **Agent Huddle.app** to Applications. The app is **ad-hoc signed, not notarized**.
-2. First launch: macOS blocks it. On macOS 15 and later the old right-click → Open shortcut no longer works for such apps. Open it once, then go to **System Settings → Privacy & Security** and click **Open Anyway**. Or remove the quarantine flag: `xattr -dr com.apple.quarantine "/Applications/Agent Huddle.app"`. (This is how macOS treats unnotarized downloads in general; it has not been tried on a downloaded zip of this app.)
+1. Download **AgentHuddle.dmg** from the [latest release](https://github.com/mikakoivisto/t3-agent-huddle/releases/latest), open it and drag **Agent Huddle** onto **Applications**. (The release also has `AgentHuddle.zip` with the same app.)
+2. Open it. Releases from v0.2.1 on are signed with a Developer ID and notarized by Apple, so macOS opens them after the usual "downloaded from the internet" question. Releases up to v0.2.0 were ad-hoc signed: macOS blocks those until you click **Open Anyway** in **System Settings → Privacy & Security**.
 3. The menu-bar item appears (no Dock icon). The panel's **Connect to T3 Code** card offers **This Mac** (when T3 runs here) and **Another machine…** ([Other machines](other-machines.md)).
 4. To start it at login, add it under System Settings → General → Login Items yourself.
 
-Each rebuild changes the ad-hoc signature, so macOS may ask for your Keychain password again after an update. Everything the app stores sits in **one** Keychain item (`app.t3huddle.AgentHuddle` / `vault`), so that is one prompt per new build. The first launch of a version that has the vault copies the older separate items into it and deletes them; if you decline one of those prompts, that item stays where it is and is tried again on the next launch.
+Everything the app stores sits in **one** Keychain item (`app.t3huddle.AgentHuddle` / `vault`). Signed releases keep the same identity from one version to the next, so updating does not ask for Keychain access again. The first signed version (v0.2.1) asks once more, because the app's identity changed from ad-hoc to Developer ID; so does a build you make yourself without a Developer ID, every time. The first launch of a version that has the vault copies the older separate items into it and deletes them; if you decline one of those prompts, that item stays where it is and is tried again on the next launch.
 
 ## Connect to T3 Code
 
