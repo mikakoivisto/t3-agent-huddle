@@ -9,7 +9,7 @@
 - **The "waiting on a background task / subagent" states are inferred** from items and child threads, not from a T3 status. A killed background task that sends no notification stops counting after 2 hours.
 - **No token, context-window or cost numbers**: T3 exposes none to MCP clients.
 - **Approvals only for a complete request**: a command over about 400 characters, or a tool input with more than the one field shown, stays on **Review in T3 Code**.
-- **Not notarized; App Sandbox untried** (Q16). The real Keychain is not covered by automated tests (a prompt would hang them); the vault and its migration are tested against an in-memory store and were checked once by hand against the real Keychain.
+- **App Sandbox untried** (Q16). Releases are signed and notarized from v0.2.1; a build you make yourself without a Developer ID is not. The real Keychain is not covered by automated tests (a prompt would hang them); the vault and its migration are tested against an in-memory store and were checked once by hand against the real Keychain.
 - **Terminal output is assumed append-only** (the pane fetches only new characters via `textOffset`); rewritten output would not refresh.
 - **No automated test has clicked the panel or the Settings window.** Hit-testing, hover, focus and resizing were only seen in rendered frames.
 - **Polling only** (2 s expanded, 5 s collapsed, 1 s on the open thread; 5 s after a failure and 15 s after three). No push channel found.

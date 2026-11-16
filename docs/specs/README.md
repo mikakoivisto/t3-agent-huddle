@@ -20,7 +20,7 @@ These specs describe Agent Huddle **as it is built on `main`**, recovered from t
 | 08 | [Connecting to T3](08-connecting-to-t3.md) | OAuth with PKCE, Keychain, loopback guard, read-only mode, contract check |
 | 09 | [Linking other machines](09-linking-other-machines.md) | peer links, Labs setting, Tailscale steps |
 | 10 | [Menu-bar item](10-menu-bar-item.md) | animated robot with working count, menu items |
-| 11 | [Packaging and distribution](11-packaging-and-distribution.md) | build script, icon, About, CI and release, ad-hoc signing |
+| 11 | [Packaging and distribution](11-packaging-and-distribution.md) | build script, icon, About, CI and release, Developer ID signing, notarization, DMG |
 | 12 | [Cross-cutting rules](12-non-functional-rules.md) | security hard rules, polling, privacy, quality gates |
 | 13 | [Write and send](13-write-and-send.md) | written answers, messages to any thread, steer or queue |
 | 14 | [Attention indicator and Settings](14-attention-indicator.md) | orange count in the menu bar, "need you" pill, bring the panel back, one Settings window |

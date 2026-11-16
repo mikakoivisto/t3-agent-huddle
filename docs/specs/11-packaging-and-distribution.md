@@ -6,7 +6,7 @@
 
 - **Get a double-clickable app** from the repository without installing anything global.
 - **Reproducible release** from a version tag.
-- **Honest about trust:** the app is ad-hoc signed, not notarized; users must approve it once.
+- **Trusted by macOS:** releases are signed with a Developer ID and notarized by Apple, so Gatekeeper opens them without an override (from v0.2.1; earlier releases were ad-hoc signed).
 
 ## Behaviour as built
 
@@ -36,8 +36,17 @@
    | `NSHighResolutionCapable` | true |
 
    No ATS keys, no sandbox entitlement, no usage-description keys.
-6. **Ad-hoc codesign** (`codesign --force --sign -`) and verify.
+6. **Codesign:** with `SIGN_IDENTITY`, else the first "Developer ID Application" identity in the keychain, using the hardened runtime and a secure timestamp (`--options runtime --timestamp`, no entitlements: the app needs none); else ad-hoc (`--sign -`). Then `codesign --verify --strict`.
 7. Zip with `ditto` to `dist/AgentHuddle.zip`.
+
+### Notarization and the DMG (`scripts/notarize.sh`)
+
+1. Checks that the app is signed with a Developer ID (`codesign -dvv`, the authority lines) and, with `APPLE_TEAM_ID`, by that team.
+2. Submits the zip with `xcrun notarytool submit --wait` (App Store Connect API key: `NOTARY_KEY_PATH`, `NOTARY_KEY_ID`, `NOTARY_ISSUER_ID`); anything but `Accepted` prints Apple's log and fails.
+3. Staples the ticket to the app, zips it again, checks it with `spctl --assess --type execute`.
+4. Builds `dist/AgentHuddle.dmg` (the app and an `/Applications` link, UDZO), signs it, notarizes and staples it, checks it with `spctl --assess --type open`.
+
+Prints submission ids and statuses only. A new team's first submission can take hours (seen: over 30 minutes, then accepted); later ones take seconds.
 
 It installs nothing and writes no login item.
 
@@ -51,20 +60,21 @@ It installs nothing and writes no login item.
 - **Triggers:** push to `main` and `build/**`, and pull requests. Concurrent runs for a ref cancel older ones. Read-only contents permission, 30-minute timeout.
 - **Runner:** `macos-15`.
 - **Steps:** `swift --version`, debug build, `swift test` (loopback fake only), `scripts/build-app.sh`, upload `dist/AgentHuddle.zip` as artifact `AgentHuddle-<sha>`.
+- **Signing dry run** (job `sign-and-notarize`, pushes to `build/**` only, never pull requests): the release's signing steps below, uploading the signed zip and DMG as `AgentHuddle-signed-<sha>`.
 
 ### Release (`.github/workflows/release.yml`)
 
 - **Trigger:** push of a tag `v*`. Contents write permission.
-- **Steps:** `swift test`; `VERSION="${TAG#v}" scripts/build-app.sh`; SHA-256 of the zip into `AgentHuddle.zip.sha256`; `gh release create "$TAG" … --generate-notes --verify-tag` with both files.
-- No debug build step, no notarization, no signing identity.
+- **Steps:** full-history checkout; `swift test`; `scripts/ci-signing-keychain.sh setup` (the certificate into a throwaway keychain, the API key into a temp file); `VERSION="${TAG#v}" scripts/build-app.sh` (Developer ID signed); `scripts/notarize.sh`; the keychain and key removed (always); `SHA256SUMS` for the zip and the DMG; `gh release create "$TAG" … --generate-notes --verify-tag` with the DMG, the zip and `SHA256SUMS`.
+- **Secrets:** `MACOS_CERT_P12`, `MACOS_CERT_PASSWORD`, `NOTARY_KEY_P8`, `NOTARY_KEY_ID`, `NOTARY_ISSUER_ID`, `APPLE_TEAM_ID`, passed only to the steps that need them.
 
 ### What users hit
 
 | Situation | What happens | Evidence |
 |---|---|---|
-| First launch of a downloaded zip | Gatekeeper refuses an unsigned or un-notarized app; right-click → Open once (README) | Documented; not observed here |
+| First launch of a download | A notarized, stapled app or DMG opens after the usual "downloaded from the internet" question; releases up to v0.2.0 (ad-hoc) need **Open Anyway** | `spctl` accepts the CI build ("Notarized Developer ID"); not yet opened from a browser download |
 | No Dock icon | The app is reachable only from the menu bar | Code |
-| macOS Keychain prompts | An ad-hoc signature changes with every build, so a new build prompts again for Keychain access. All secrets are in one item (`vault`), so it is one prompt rather than one per credential. A Developer ID signature would stop the repeats | Observed by the maintainer (several prompts per new build before the vault); the vault itself is tested against memory |
+| macOS Keychain prompts | An ad-hoc signature changes with every build, so a new build prompts again for Keychain access; a Developer ID signature keeps the identity, so signed updates do not. The first signed version prompts once (the identity changed). All secrets are in one item (`vault`) | Observed by the maintainer (several prompts per new build before the vault); the vault itself is tested against memory |
 | Peer check | A wrong "Listener on the T3 port is not T3 Code" if the pid-to-bundle check misjudges a real install | Unproven (spec 08) |
 | Sandbox | The app is not sandboxed; App Sandbox untried | README Limitations |
 | Start at login | Not provided; add the binary under System Settings → General → Login Items by hand | README |
@@ -89,7 +99,8 @@ None.
 | ID | Statement | Tests | Evidence |
 |---|---|---|---|
 | PKG-01 | The package builds, and its tests pass with no real T3 and no `~/.t3` access | `swift test` (305 tests in 38 suites) | **Run for this review** before the history cleanup: all passed in about 1 s. Not run by CI |
-| PKG-02 | `scripts/build-app.sh` produces `dist/Agent Huddle.app` and `dist/AgentHuddle.zip` with the bundle id, version, `LSUIElement`, icon, licence, ad-hoc signature | none | **None** in this review (the script writes to `assets/`, outside the allowed paths) |
+| PKG-07 | A tagged release is Developer ID signed, notarized and stapled, as a DMG and a zip | none | **CI**: the `build/signing` dry run, both submissions Accepted, `spctl`: "Notarized Developer ID" |
+| PKG-02 | `scripts/build-app.sh` produces `dist/Agent Huddle.app` and `dist/AgentHuddle.zip` with the bundle id, version, `LSUIElement`, icon, licence, a Developer ID or ad-hoc signature | none | **None** in this review (the script writes to `assets/`, outside the allowed paths) |
 | PKG-03 | The app does not read the Keychain or `~/.t3` in `--fixture` mode | `SecurityTests.sourcesTouchHomeT3OnlyForTheRuntimeFileAndNeverOpenSQLite` (static); `main.swift` wiring | Fake (static) |
 | PKG-04 | The release version comes from the tag | none | **None** |
 | PKG-05 | The About panel carries the MIT licence | none | **None** |
@@ -103,6 +114,7 @@ None.
 - **PKG-Q4:** the shipped binary includes `FakeT3` and `Scenario` code and its launch modes. Split the app target to drop them?
 - **PKG-Q5:** `AppIcon.swift:3` says "four buddies"; the code draws one (`BuddyView(index: 0, …)`).
 - **PKG-Q6:** with the single vault item, is one prompt per new ad-hoc build what users see? Observe once more.
+- **PKG-Q7:** an updater (Homebrew cask, or an in-app check that needs an exception to "Loopback only") is on hold until signed releases are out.
 
 ## Sources
 
