@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Builds dist/Agent Huddle.app (release, ad-hoc signed, menu-bar/accessory app with no Dock icon) and a zip.
+# Builds dist/Agent Huddle.app (release, menu-bar/accessory app with no Dock icon) and a zip. Signed with a Developer ID
+# when one is available (see below), ad-hoc otherwise. scripts/notarize.sh notarizes it and makes the DMG.
 # Installs nothing: copy the .app to /Applications yourself if you want it there.
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -46,7 +47,19 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>NSHighResolutionCapable</key><true/>
 </dict></plist>
 PLIST
-codesign --force --sign - "$APP" 2>&1 | tail -1
-codesign --verify --verbose=1 "$APP" 2>&1 | tail -1
+# Signing: SIGN_IDENTITY (CI passes it), else the first Developer ID Application identity in your keychain, else ad-hoc.
+# A Developer ID signature uses the hardened runtime and a secure timestamp, as notarization requires. No entitlements:
+# the app needs none (no sandbox, no Apple events, no JIT).
+if [[ -z "${SIGN_IDENTITY:-}" ]]; then
+  SIGN_IDENTITY="$(security find-identity -v -p codesigning 2>/dev/null | sed -n 's/.*"\(Developer ID Application: [^"]*\)".*/\1/p' | head -1)"
+fi
+if [[ -n "${SIGN_IDENTITY:-}" ]]; then
+  codesign --force --options runtime --timestamp --sign "$SIGN_IDENTITY" "$APP" 2>&1 | tail -1
+  echo "signed with Developer ID"
+else
+  codesign --force --sign - "$APP" 2>&1 | tail -1
+  echo "signed ad-hoc (no Developer ID identity found)"
+fi
+codesign --verify --strict --verbose=1 "$APP" 2>&1 | tail -1
 (cd dist && ditto -c -k --keepParent "Agent Huddle.app" AgentHuddle.zip)
 echo "built: $APP  ($(du -sh "$APP" | cut -f1))  and dist/AgentHuddle.zip"
