@@ -432,12 +432,14 @@ struct QuestionPanel: View {
                 AnswerEditor(model: model, store: model.composer, session: session, question: question)
             } else {
                 if question.answerableInWidget {
+                    if question.multiSelect {
+                        Text(verbatim: "Pick one or more").font(.system(size: 12)).foregroundStyle(Theme.grey)
+                    }
                     ForEach(question.options, id: \.self) { opt in
-                        let on = selected == opt.label
+                        let on = question.multiSelect ? (model.checks[question.requestId]?.contains(opt.label) ?? false) : selected == opt.label
                         Button { model.select(option: opt.label, for: question) } label: {
                             HStack(spacing: 10) {
-                                Circle().fill(on ? Theme.lime : Color.clear).frame(width: 9, height: 9)
-                                    .overlay(Circle().stroke(on ? Theme.lime : Theme.dim, lineWidth: 1.5))
+                                ChoiceMark(on: on, box: question.multiSelect)
                                 Text(verbatim: opt.label).font(.system(size: 16, weight: .medium)).foregroundStyle(.white)
                                 Spacer()
                             }

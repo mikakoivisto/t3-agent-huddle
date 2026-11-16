@@ -36,6 +36,9 @@ struct MultiQuestionPanel: View {
         header(tag: part.tag, trailing: "\(index + 1) of \(question.parts.count)", current: index)
         Text(verbatim: part.prompt).font(.system(size: 15, weight: .bold)).foregroundStyle(.white)
             .fixedSize(horizontal: false, vertical: true)
+        if part.multiSelect && !writing {
+            Text(verbatim: "Pick one or more, then Next").font(.system(size: 11.5)).foregroundStyle(Theme.grey)
+        }
         if writing {
             let key = HuddleModel.multiDraftKey(question.requestId, part.id)
             let text = store.text(key).trimmingCharacters(in: .whitespacesAndNewlines)
@@ -51,10 +54,11 @@ struct MultiQuestionPanel: View {
                 }.buttonStyle(.plain).keyboardShortcut(.cancelAction)
             }
         } else {
+            let picks = model.multiChecked(question, part)
             ForEach(part.options, id: \.self) { opt in
-                optionRow(opt, on: answer == opt.label)
+                optionRow(opt, part: part, on: part.multiSelect ? picks.contains(opt.label) : answer == opt.label)
             }
-            if let answer, !part.options.contains(where: { $0.label == answer }) {
+            if let answer, picks.isEmpty, !part.options.contains(where: { $0.label == answer }) {
                 // A written answer is shown like a chosen option.
                 HStack(alignment: .top, spacing: 9) {
                     radio(on: true)
@@ -86,10 +90,12 @@ struct MultiQuestionPanel: View {
         }
     }
 
-    private func optionRow(_ opt: QuestionOption, on: Bool) -> some View {
-        Button { model.chooseMultiAnswer(question, opt.label) } label: {
+    private func optionRow(_ opt: QuestionOption, part: QuestionPart, on: Bool) -> some View {
+        Button {
+            if part.multiSelect { model.toggleMultiCheck(question, opt.label) } else { model.chooseMultiAnswer(question, opt.label) }
+        } label: {
             HStack(alignment: .top, spacing: 9) {
-                radio(on: on)
+                ChoiceMark(on: on, box: part.multiSelect).padding(.top, 4)
                 VStack(alignment: .leading, spacing: 1) {
                     Text(verbatim: opt.label).font(.system(size: 13.5, weight: .semibold)).foregroundStyle(.white)
                         .fixedSize(horizontal: false, vertical: true)
@@ -106,10 +112,7 @@ struct MultiQuestionPanel: View {
         }.buttonStyle(.plain).disabled(model.readOnly)
     }
 
-    private func radio(on: Bool) -> some View {
-        Circle().fill(on ? Theme.lime : Color.clear).frame(width: 9, height: 9)
-            .overlay(Circle().stroke(on ? Theme.lime : Theme.dim, lineWidth: 1.5)).padding(.top, 4)
-    }
+    private func radio(on: Bool) -> some View { ChoiceMark(on: on, box: false).padding(.top, 4) }
 
     // MARK: Header and review
 
@@ -157,6 +160,22 @@ struct MultiQuestionPanel: View {
             Button { Task { await model.sendMultiAnswers(threadId: session.threadId) } } label: {
                 Pill(text: ui == .sending ? "Sending…" : "Send \(n) answers", fill: ready ? Theme.lime : Theme.dim)
             }.buttonStyle(.plain).disabled(!ready)
+        }
+    }
+}
+
+/// A round mark for one choice, a square box with a tick for a multi-select question.
+struct ChoiceMark: View {
+    var on: Bool
+    var box: Bool
+    var body: some View {
+        if box {
+            RoundedRectangle(cornerRadius: 3).fill(on ? Theme.lime : Color.clear).frame(width: 12, height: 12)
+                .overlay(RoundedRectangle(cornerRadius: 3).stroke(on ? Theme.lime : Theme.dim, lineWidth: 1.5))
+                .overlay(Image(systemName: "checkmark").font(.system(size: 8, weight: .heavy)).foregroundStyle(.black).opacity(on ? 1 : 0))
+        } else {
+            Circle().fill(on ? Theme.lime : Color.clear).frame(width: 9, height: 9)
+                .overlay(Circle().stroke(on ? Theme.lime : Theme.dim, lineWidth: 1.5))
         }
     }
 }

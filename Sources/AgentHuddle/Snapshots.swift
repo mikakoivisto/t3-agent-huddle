@@ -317,6 +317,16 @@ enum Snapshots {
         }
         j.stop()
 
+        // K. A multi-select question (spec 04): two boxes ticked, Send enabled.
+        let k = await DemoRig.make(prefs: prefs.appendingPathComponent("k"))
+        DemoScenario.start(k.local, only: [DemoScenario.docs]); DemoScenario.addQuestion(k.local); DemoScenario.addMultiSelectQuestion(k.local)
+        await k.refresh()
+        if let q = k.model.state.sessions[DemoScenario.changelog]?.question {
+            k.model.select(option: "Features", for: q); k.model.select(option: "Breaking changes", for: q)
+        }
+        save(ids: [DemoScenario.changelog], k.model, "63-multi-select", dir)
+        k.stop()
+
         // D. Closing, the collapsed header, a jump that cannot be delivered, and T3 going away.
         let d = await DemoRig.make(prefs: prefs.appendingPathComponent("d"))
         DemoScenario.start(d.local); DemoScenario.addWaiters(d.local)

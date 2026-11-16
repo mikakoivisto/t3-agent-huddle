@@ -73,14 +73,29 @@ struct MultiQuestionTests {
         #expect(s.answers.isEmpty)
     }
 
-    @Test func multiSelectOrRepeatedIdsStayInT3() {
+    @Test func aMultiSelectQuestionAmongSeveralTicksBoxesAndDoesNotMoveOn() async throws {
+        let s = try await startFake(); defer { s.stop() }
+        s.update(Scenario.questionThread) { $0.questions[0].multiSelect = true; $0.questions[0].more = Self.more }
+        let m = makeModel(s); await m.refresh()
+        let q = try #require(m.state.sessions[Scenario.questionThread]?.question)
+        #expect(q.multiAnswerable && q.parts[0].multiSelect)
+        let labels = q.parts[0].options.map(\.label)
+        m.toggleMultiCheck(q, labels[1]); m.toggleMultiCheck(q, labels[0])
+        #expect(m.multiStep(q) == 0, "a box does not move on")
+        #expect(m.multiAnswer(q, q.parts[0]) == "\(labels[0]), \(labels[1])")
+        m.toggleMultiCheck(q, labels[0]); m.toggleMultiCheck(q, labels[1])
+        #expect(m.multiAnswer(q, q.parts[0]) == nil, "no box ticked: no answer")
+        m.toggleMultiCheck(q, labels[2])
+        m.goToMultiStep(q, 1)
+        for p in q.parts.dropFirst() { m.chooseMultiAnswer(q, p.options[0].label) }
+        await m.sendMultiAnswers(threadId: Scenario.questionThread)
+        #expect(s.answers.first?.answers["q0"].string == labels[2])
+    }
+
+    @Test func repeatedIdsStayInT3() {
         let base: JSON = ["requestId": "r", "questions": [
             ["id": "a", "question": "One?", "options": [["label": "x"]]],
             ["id": "a", "question": "Two?", "options": [["label": "y"]]]]]
         #expect(QuestionCodec.question(fromRead: base, threadId: "t")?.multiAnswerable == false, "repeated ids would collide in the answers map")
-        let multi: JSON = ["requestId": "r", "questions": [
-            ["id": "a", "question": "One?", "options": [["label": "x"]]],
-            ["id": "b", "question": "Two?", "multiSelect": true, "options": [["label": "y"]]]]]
-        #expect(QuestionCodec.question(fromRead: multi, threadId: "t")?.multiAnswerable == false)
     }
 }

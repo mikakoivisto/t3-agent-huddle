@@ -28,7 +28,14 @@
 
 ### Answerable rule
 
-A question is answerable in the widget only if the read gives **at most one question**, it is **not multi-select**, and it has **at least one option**. A single, not multi-select question with no options can still be answered with **Write answer** (spec 13). **Several questions in one request** (T3 asks up to four) are answerable when none is multi-select and their ids are distinct (the answers are one map keyed by id). Anything else (a multi-select question) shows the prompt and "Answer this one in T3 Code: ↗ opens it."
+A single question with **at least one option** is answerable in the widget, multi-select or not. A single question with no options can still be answered with **Write answer** (spec 13). **Several questions in one request** (T3 asks up to four) are answerable when their ids are distinct (the answers are one map keyed by id). Anything else (repeated ids, an unreadable request) shows the prompt and "Answer this one in T3 Code: ↗ opens it."
+
+### Multi-select (asked for by the maintainer)
+
+- **Checkboxes** (square, ticked) instead of round marks, with "Pick one or more" under the question ("Pick one or more, then Next" among several).
+- **A tick never moves on:** Send (a single question) or Next / Review answers (among several) is enabled once a box is ticked; unticking every box removes the answer.
+- **The answer is one text:** the ticked labels in the order the question lists them, joined with ", " (the form Claude Code's question tool uses). T3 takes any text as an answer: a written answer to a multi-select question was accepted live. Whether T3's own UI joins picks the same way is not confirmed.
+- **Write answer** works on a multi-select question too and replaces any ticked boxes.
 
 ### Several questions in one request (asked for by the maintainer)
 
@@ -79,11 +86,11 @@ The shape is isolated in `QuestionCodec` (`Models.swift`) and in the fake, so on
 | QST-02 | Selecting an option and Send calls `respond`, closes the panel and clears the selection | `ModelTests.sendAnswerSucceedsAndPanelCloses`; `MCPClientTests.questionReadAndRespondRoundTrip` | Fake |
 | QST-03 | A failed Send keeps the panel and the selection with an error; the next poll closes a question answered elsewhere | `ModelTests.sendFailureKeepsPanelAndSelection` | Fake |
 | QST-04 | Read-only mode sends nothing and shows an error | `ModelTests.readOnlyModeBlocksSend` | Fake |
-| QST-05 | A multi-select question is not answerable in the widget | `HardeningTests.multiSelectFallsBackToTypeInT3` | Fake |
+| QST-05 | A multi-select question is answered with checkboxes; the picks go as one text in the question's order; among several questions a tick does not move on | `HardeningTests.multiSelectIsAnsweredWithCheckboxesAsOneText`; `MultiQuestionTests.aMultiSelectQuestionAmongSeveralTicksBoxesAndDoesNotMoveOn`; still 63 | Fake; a written answer to a multi-select question Live |
 | QST-06 | An unreadable question is a question, not a permission, and Send is a no-op | `HardeningTests.unreadableQuestionIsAQuestionNotAPermission` | Fake |
 | QST-07 | An alternate (flat) read shape still decodes and answers | `HardeningTests.alternateQuestionShapeStillDecodesAndAnswers` | Fake |
 | QST-08 | A failed pending list never produces a permission | `HardeningTests.failedPendingListIsNotInferredAsPermission` | Fake |
-| QST-10 | Several questions: read with descriptions, an option moves on, a written answer counts, the review shows all, one `respond` sends every answer keyed by id; partial answers send nothing; read-only sends nothing; multi-select or repeated ids stay in T3 | `MultiQuestionTests`; stills 60–62 | Fake; shapes Live |
+| QST-10 | Several questions: read with descriptions, an option moves on, a written answer counts, the review shows all, one `respond` sends every answer keyed by id; partial answers send nothing; read-only sends nothing; repeated ids stay in T3 | `MultiQuestionTests`; stills 60–62 | Fake; shapes Live |
 | QST-09 | The list decoder reads `requestIds` and the fallback shapes | `CodecTests.listDecodesLiveAndFallbackShapes` | Fake; `requestIds` also Live |
 | QST-10 | A question on a linked machine is read and answered with that machine's `environmentId` | `LiveShapeTests.threadsGroupedByEnvironmentWhenLinkedEnvironmentsAreOn` | Fake |
 | QST-11 | The chime plays once for a newly attention-needing thread | `ModelTests.soundPlaysOncePerNewAttentionAndNotWhenMuted` | Fake |
@@ -93,7 +100,8 @@ The shape is isolated in `QuestionCodec` (`Models.swift`) and in the fake, so on
 ## Open questions
 
 - **QST-Q1 (partly answered 2026-11-15):** a real Claude question (header, two options, single choice) decoded with the assumed shape, and a written answer through `respond` reached the agent word for word (spec 13 live check). A picked option has not been sent live. A thread in a broader runtime mode than the sign-in refuses answers (spec 13).
-- **QST-Q2 (answered):** free-text answers (spec 13) and several questions per request are supported; multi-select is not.
+- **QST-Q2 (answered):** free-text answers (spec 13), several questions per request and multi-select are supported.
+- **QST-Q3:** how T3 Code's own UI joins several picks is not confirmed; the panel sends `"A, B"`.
 - **QST-Q3:** does `respond` need `orchestration:operate`, and does the OAuth token have it at the access level the user picks (README advises "approval-required")?
 
 ## Sources

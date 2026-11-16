@@ -243,15 +243,22 @@ public struct Question: Equatable, Sendable {
     public var prompt: String
     public var options: [QuestionOption]
     public var multiSelect: Bool
-    /// False for anything the options cannot answer (several questions, multi-select, no options).
+    /// False for anything the options cannot answer (several questions, no options).
     public var answerableInWidget: Bool
-    /// A single, not multi-select question: it can be answered with text the user writes (spec 13), options or not.
+    /// A single question: it can be answered with text the user writes (spec 13), options or not.
     public var freeTextAnswerable: Bool
     /// Every question of the request, in order (one entry for a single question).
     public var parts: [QuestionPart]
-    /// Several questions, none multi-select, distinct ids: answered one at a time in the panel and sent together (spec 04).
+    /// Several questions with distinct ids: answered one at a time in the panel and sent together (spec 04).
     public var multiAnswerable: Bool {
-        parts.count > 1 && parts.allSatisfy { !$0.multiSelect } && Set(parts.map(\.id)).count == parts.count
+        parts.count > 1 && Set(parts.map(\.id)).count == parts.count
+    }
+
+    /// Several picks of a multi-select question, as one answer: the labels in the order the question lists them, joined
+    /// with ", " (the form Claude Code's question tool uses; T3 takes any text as an answer, seen live).
+    public static func joinPicks(_ picks: Set<String>, options: [QuestionOption]) -> String? {
+        let ordered = options.map(\.label).filter(picks.contains)
+        return ordered.isEmpty ? nil : ordered.joined(separator: ", ")
     }
 
     public init(requestId: String, threadId: String, questionId: String = "0", tag: String? = nil,
@@ -287,7 +294,8 @@ public enum QuestionCodec {
             return QuestionOption(label: l, detail: o["description"].string)
         }
         let multi = first["multiSelect"].bool ?? false
-        let simple = qs.count <= 1 && !multi && !options.isEmpty
+        // Multi-select is answerable too: the picks go as one text, "A, B" (spec 04).
+        let simple = qs.count <= 1 && !options.isEmpty
         let parts: [QuestionPart] = qs.enumerated().compactMap { i, p in
             guard let text = p["question"].string ?? p["prompt"].string ?? p["text"].string else { return nil }
             let opts = (p["options"].array ?? []).compactMap { o -> QuestionOption? in
@@ -302,7 +310,7 @@ public enum QuestionCodec {
                         questionId: first["id"].string ?? "0",
                         tag: first["header"].string ?? first["tag"].string,
                         prompt: prompt, options: options, multiSelect: multi,
-                        answerableInWidget: simple, freeTextAnswerable: qs.count <= 1 && !multi,
+                        answerableInWidget: simple, freeTextAnswerable: qs.count <= 1,
                         parts: parts.count == qs.count ? parts : [])
     }
 
