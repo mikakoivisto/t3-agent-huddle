@@ -73,7 +73,7 @@ Row rules:
 
 ### Preferences
 
-`~/Library/Application Support/AgentHuddle/preferences.json`: closed thread ids, panel position, saved max height, collapsed, muted, read-only, close-settles, OAuth client id and redirect port. No thread content (a test asserts the file has no `title`).
+`~/Library/Application Support/AgentHuddle/preferences.json`: closed thread ids, kept thread ids (rows kept across restarts), panel position, saved max height, collapsed, muted, read-only, close-settles, OAuth client id and redirect port. No thread content (a test asserts the file has no `title`).
 
 ## T3 data and tools
 

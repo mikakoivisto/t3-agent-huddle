@@ -98,6 +98,11 @@ public final class HuddleModel: ObservableObject {
     @Published public private(set) var armedCloseID: String?
     @Published public private(set) var toast: String?
     @Published public var selections: [String: String] = [:]          // requestId → option label
+    /// Several questions in one request (spec 04): which one is shown (== count: the review), and the answers so far.
+    @Published public internal(set) var multiSteps: [String: Int] = [:]
+    @Published public internal(set) var multiAnswers: [String: [String: String]] = [:]
+    /// The request whose current question is being written (one at a time).
+    @Published public internal(set) var multiWritingFor: String?
     @Published public internal(set) var questionStates: [String: QuestionUIState] = [:]
     @Published public private(set) var readOnly = false
     /// Opt-in (default off): Allow / Deny on permission requests through T3's internal `/ws`. True only while the credential exists.
@@ -154,6 +159,11 @@ public final class HuddleModel: ObservableObject {
     var toolArguments: [String: Set<String>] = [:]
     private var lastEnvRefresh = Date.distantPast
     private var lastFinishedFetch = Date.distantPast
+    /// Finished rows missing from a partial finished list: re-read now and then to see whether they were settled in T3.
+    private var lastPutAwayCheck: [String: Date] = [:]
+    var putAwayCheckInterval: TimeInterval = 30
+    /// Kept rows (spec 02) not back yet: when their read was last tried.
+    private var restoreAttempts: [String: Date] = [:]
     private var envBoostUntil = Date.distantPast
     public var canLinkEnvironments: Bool { toolNames.contains("t3_environment_link") }
     private var signInTask: Task<Void, Never>?
@@ -245,6 +255,8 @@ public final class HuddleModel: ObservableObject {
         let liveRequests = Set(state.sessions.values.compactMap { $0.question?.requestId })
         questionStates = questionStates.filter { liveRequests.contains($0.key) }
         selections = selections.filter { liveRequests.contains($0.key) }
+        multiSteps = multiSteps.filter { liveRequests.contains($0.key) }
+        multiAnswers = multiAnswers.filter { liveRequests.contains($0.key) }
         if projectNames.count > 300 { projectNames.removeAll(); projectLookups.removeAll() }
         pruneComposeState(liveThreads: live, liveRequests: liveRequests)
     }
@@ -360,6 +372,7 @@ public final class HuddleModel: ObservableObject {
             }
         }
         state.applyActive(active)
+        var recheck = Set<String>()
         if state.sessions.values.contains(where: { !$0.t3Status.isActive }) || Date().timeIntervalSince(lastFinishedFetch) > 10 {
             lastFinishedFetch = Date()
             var finished = directFinished
@@ -374,18 +387,30 @@ public final class HuddleModel: ObservableObject {
                 }
             }
             state.applyFinished(finished, exhaustive: exhaustive)
+            // A partial list cannot say a missing finished row was settled; its own read can (at most every 30 s per row).
+            if !exhaustive {
+                let listed = Set(finished.map(\.threadId))
+                for s in state.sessions.values where !s.t3Status.isActive && !listed.contains(s.threadId)
+                    && Date().timeIntervalSince(lastPutAwayCheck[s.threadId] ?? .distantPast) >= putAwayCheckInterval {
+                    lastPutAwayCheck[s.threadId] = Date()
+                    recheck.insert(s.threadId)
+                }
+            }
         }
+        await restoreKept()
         await refreshProjectNames()
         for s in state.sessions.values {
             let p = before[s.threadId]
             // A pending request whose item we have not seen as `waiting` yet is re-read every poll: T3 can flip an item's
             // status without touching the thread's updatedAt or itemCount.
             let approvalUnsettled = (s.pendingRequestCount > 0 && s.approvalRequestId == nil) || s.secretPrompt != nil
-            if p == nil || p!.t3Status != s.t3Status || p!.updatedAt != s.updatedAt || p!.itemCount != s.itemCount || approvalUnsettled {
+            if p == nil || p!.t3Status != s.t3Status || p!.updatedAt != s.updatedAt || p!.itemCount != s.itemCount || approvalUnsettled
+                || recheck.contains(s.threadId) {
                 do { try await readThread(id: s.threadId) } catch is MachineFailure {}
             }
         }
         for s in state.sessions.values { do { try await checkPending(id: s.threadId) } catch is MachineFailure {} }
+        updateKept(before: before)
 
         let newlyNeeding = state.sessions.values.filter { $0.needsAttention && !attentionBefore.contains($0.threadId) }
         if !newlyNeeding.isEmpty && !muted { config.playSound() }
@@ -740,4 +765,48 @@ public final class HuddleModel: ObservableObject {
     }
 
     private func persist() { config.preferences?.save(prefs) }
+
+    // MARK: Kept rows (spec 02)
+
+    /// Rows stay across restarts until the user closes them or T3 puts them away. Only ids are stored.
+    private func updateKept(before: [String: Session]) {
+        let old = prefs.keptThreads ?? [:]
+        var kept = old
+        for id in before.keys where state.sessions[id] == nil { kept[id] = nil }   // left for a T3 reason: settled, archived, idle
+        for s in state.sessions.values where !state.hiddenIDs.contains(s.threadId) { kept[s.threadId] = s.environmentId ?? "" }
+        for id in Array(kept.keys) where state.hiddenIDs.contains(id) { kept[id] = nil }   // closed by the user
+        if kept.count > 300 {   // bounded: rows no longer shown go first
+            for id in kept.keys.filter({ state.sessions[$0] == nil }).prefix(kept.count - 300) { kept[id] = nil }
+        }
+        if kept != old { prefs.keptThreads = kept; persist() }
+    }
+
+    private func forgetKept(_ id: String) {
+        guard prefs.keptThreads?[id] != nil else { return }
+        prefs.keptThreads?[id] = nil; persist()
+    }
+
+    /// Kept rows that are not back (after a restart): read each by id on its own machine. A machine that cannot be reached is
+    /// tried again later (at most every 30 s per row); a thread T3 cannot read, or one put away, is forgotten.
+    private func restoreKept() async {
+        for (id, env) in prefs.keptThreads ?? [:] where state.sessions[id] == nil && !state.hiddenIDs.contains(id) {
+            if let t = restoreAttempts[id], Date().timeIntervalSince(t) < 30 { continue }
+            restoreAttempts[id] = Date()
+            let machine = env.isEmpty ? nil : env
+            do {
+                let r: (summary: ThreadSummary?, putAway: Bool)
+                if let m = machine, connectedMachineIds.contains(m), m != localEnvironmentId {
+                    r = try await ensureRemoteClient(m).readSummary(threadId: id)
+                } else {
+                    let local = localEnvironmentId
+                    r = try await ensureClient().readSummary(threadId: id, environment: machine == nil || machine == local ? nil : machine)
+                }
+                guard var t = r.summary, !r.putAway, !t.settled, !t.snoozed, t.parentThreadId == nil else { forgetKept(id); continue }
+                if t.environmentId == nil { t.environmentId = machine }
+                state.restore(t)
+            } catch let e as HuddleError {
+                if case .toolFailed = e { forgetKept(id) }   // T3 answered: no such thread (deleted)
+            } catch {}
+        }
+    }
 }

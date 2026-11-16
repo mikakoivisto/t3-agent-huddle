@@ -123,6 +123,14 @@ public final class MCPClient: @unchecked Sendable {
         return ThreadRead(json: try await callTool("t3_thread_read", withEnv(args, environment)))
     }
 
+    /// A thread's summary by id (one item read), and whether it is settled, snoozed or archived: restoring kept rows.
+    public func readSummary(threadId: String, environment: String? = nil) async throws -> (summary: ThreadSummary?, putAway: Bool) {
+        let j = try await callTool("t3_thread_read", withEnv(["threadId": .string(threadId), "view": "activity", "runLimit": 1,
+                                                              "limit": 1, "maxCharsPerItem": 1], environment))
+        let t = j["thread"].isNull ? j : j["thread"]
+        return (ThreadSummary(json: t), ThreadRead(json: j).putAway)
+    }
+
     /// One timeline item by id, with its current `status` and complete text (up to 4000 chars): the pre-decision check for inline approvals.
     public func readItem(threadId: String, itemId: String, environment: String? = nil) async throws -> ActivityItem? {
         let r = try await callTool("t3_thread_read", withEnv([
@@ -162,6 +170,13 @@ public final class MCPClient: @unchecked Sendable {
 
     public func respond(question: Question, selection: String, environment: String? = nil) async throws {
         var args = QuestionCodec.respondArguments(question: question, selection: selection).object ?? [:]
+        if let environment { args["environmentId"] = .string(environment) }
+        _ = try await callTool("t3_pending_request", .object(args))
+    }
+
+    /// Every question of a request answered at once (spec 04).
+    public func respond(question: Question, answers: [String: String], environment: String? = nil) async throws {
+        var args = QuestionCodec.respondArguments(question: question, answers: answers).object ?? [:]
         if let environment { args["environmentId"] = .string(environment) }
         _ = try await callTool("t3_pending_request", .object(args))
     }

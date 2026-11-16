@@ -402,6 +402,13 @@ struct QuestionPanel: View {
     var session: Session
     var question: Question
     var body: some View {
+        // Several questions in one request (spec 04): one at a time, then a review and one Send.
+        if question.multiAnswerable && model.canAnswer(session) {
+            MultiQuestionPanel(model: model, store: model.composer, session: session, question: question)
+        } else { single }
+    }
+
+    @ViewBuilder private var single: some View {
         let selected = model.selections[question.requestId]
         let ui = model.questionStates[question.requestId] ?? .pending
         let writing = model.writingAnswerFor == question.requestId && question.freeTextAnswerable

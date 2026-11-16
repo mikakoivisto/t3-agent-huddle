@@ -28,7 +28,16 @@
 
 ### Answerable rule
 
-A question is answerable in the widget only if the read gives **at most one question**, it is **not multi-select**, and it has **at least one option**. A single, not multi-select question with no options can still be answered with **Write answer** (spec 13). Anything else (several questions, multi-select) shows the prompt and "Answer this one in T3 Code: ↗ opens it."
+A question is answerable in the widget only if the read gives **at most one question**, it is **not multi-select**, and it has **at least one option**. A single, not multi-select question with no options can still be answered with **Write answer** (spec 13). **Several questions in one request** (T3 asks up to four) are answerable when none is multi-select and their ids are distinct (the answers are one map keyed by id). Anything else (a multi-select question) shows the prompt and "Answer this one in T3 Code: ↗ opens it."
+
+### Several questions in one request (asked for by the maintainer)
+
+- **One at a time:** the question's tag, "n of N" and one dot per question (lime when answered, ringed when shown; a dot goes to that question), the question, and its options with their descriptions in grey.
+- **An option moves on** to the next unanswered question; after the last, to the review.
+- **Write answer** on every question: a field replaces the options; **Use this answer** takes the text as that question's answer and moves on; **Back to options** returns. A written answer is shown like a chosen option ("Your answer").
+- **Back**, and **Next** (or **Review answers**) once the shown question has an answer.
+- **Review:** "Your answers", each question's tag and answer (a line goes back to that question), **Back** and **Send N answers**. Nothing is sent before the review, and Send needs every question answered.
+- **Send:** one `respond` with `answers: {<question id>: <label or written text>, …}` for all of them. Success clears the request and shows "N answers sent"; a failure keeps every answer with a one-line error. Read-only mode sends nothing. Answers and drafts stay in memory.
 
 ### Send
 
@@ -42,8 +51,8 @@ A question is answerable in the widget only if the read gives **at most one ques
 | Part | Accepted | Evidence |
 |---|---|---|
 | List | `{requestIds:[…]}` (strings or `{requestId}`/`{id}`); fallbacks `requests`, `pending`, `items` | `requestIds`: Live (M0 L6, empty); fallbacks: assumed |
-| Read | `{requestId, questions:[{id, header, question, options:[{label, description}], multiSelect}]}`; also a flat shape and plain string options | **Assumed** (SPEC Q5) |
-| Respond | `answers: {<questionId>: <label>}` | **Assumed** |
+| Read | `{requestId, questions:[{id, header, question, options:[{label, description}], multiSelect}]}`; also a flat shape and plain string options | **Live** (a four-question request read through T3's tools; each `id` was the question's text) |
+| Respond | `answers: {<questionId>: <label or text>}`, one entry per question | **Live** for the shape (T3 handed the agent exactly this map after the user answered four questions in T3 Code); not yet sent from the panel |
 
 The shape is isolated in `QuestionCodec` (`Models.swift`) and in the fake, so one edit fixes both.
 
@@ -74,6 +83,7 @@ The shape is isolated in `QuestionCodec` (`Models.swift`) and in the fake, so on
 | QST-06 | An unreadable question is a question, not a permission, and Send is a no-op | `HardeningTests.unreadableQuestionIsAQuestionNotAPermission` | Fake |
 | QST-07 | An alternate (flat) read shape still decodes and answers | `HardeningTests.alternateQuestionShapeStillDecodesAndAnswers` | Fake |
 | QST-08 | A failed pending list never produces a permission | `HardeningTests.failedPendingListIsNotInferredAsPermission` | Fake |
+| QST-10 | Several questions: read with descriptions, an option moves on, a written answer counts, the review shows all, one `respond` sends every answer keyed by id; partial answers send nothing; read-only sends nothing; multi-select or repeated ids stay in T3 | `MultiQuestionTests`; stills 60–62 | Fake; shapes Live |
 | QST-09 | The list decoder reads `requestIds` and the fallback shapes | `CodecTests.listDecodesLiveAndFallbackShapes` | Fake; `requestIds` also Live |
 | QST-10 | A question on a linked machine is read and answered with that machine's `environmentId` | `LiveShapeTests.threadsGroupedByEnvironmentWhenLinkedEnvironmentsAreOn` | Fake |
 | QST-11 | The chime plays once for a newly attention-needing thread | `ModelTests.soundPlaysOncePerNewAttentionAndNotWhenMuted` | Fake |
@@ -83,7 +93,7 @@ The shape is isolated in `QuestionCodec` (`Models.swift`) and in the fake, so on
 ## Open questions
 
 - **QST-Q1 (partly answered 2026-11-15):** a real Claude question (header, two options, single choice) decoded with the assumed shape, and a written answer through `respond` reached the agent word for word (spec 13 live check). A picked option has not been sent live. A thread in a broader runtime mode than the sign-in refuses answers (spec 13).
-- **QST-Q2:** free-text answers and several questions per request are not supported. Is v1 acceptable?
+- **QST-Q2 (answered):** free-text answers (spec 13) and several questions per request are supported; multi-select is not.
 - **QST-Q3:** does `respond` need `orchestration:operate`, and does the OAuth token have it at the access level the user picks (README advises "approval-required")?
 
 ## Sources

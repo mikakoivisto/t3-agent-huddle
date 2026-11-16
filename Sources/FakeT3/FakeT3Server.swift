@@ -26,8 +26,17 @@ public final class FakeT3Server: @unchecked Sendable {
         public var question: String
         public var options: [String]
         public var multiSelect = false
-        public init(requestId: String, header: String, question: String, options: [String], multiSelect: Bool = false) {
+        /// More questions in the same request (T3 asks up to four at once), after the first ("q0").
+        public var more: [Part] = []
+        public struct Part: Sendable {
+            public var id: String, header: String, question: String, options: [(label: String, description: String)]
+            public init(id: String, header: String, question: String, options: [(label: String, description: String)]) {
+                self.id = id; self.header = header; self.question = question; self.options = options
+            }
+        }
+        public init(requestId: String, header: String, question: String, options: [String], multiSelect: Bool = false, more: [Part] = []) {
             self.requestId = requestId; self.header = header; self.question = question; self.options = options; self.multiSelect = multiSelect
+            self.more = more
         }
     }
     public struct FakeThread: Sendable {
@@ -540,10 +549,13 @@ public final class FakeT3Server: @unchecked Sendable {
                         "options": .array(q.options.map { .string($0) })]
             case .standard: break
             }
-            return ["requestId": .string(q.requestId), "questions": [[
-                "id": "q0", "header": .string(q.header), "question": .string(q.question),
-                "multiSelect": .bool(q.multiSelect),
-                "options": .array(q.options.map { ["label": .string($0)] })]]]
+            let first: JSON = ["id": "q0", "header": .string(q.header), "question": .string(q.question),
+                               "multiSelect": .bool(q.multiSelect), "options": .array(q.options.map { ["label": .string($0)] })]
+            let rest: [JSON] = q.more.map { p in
+                ["id": .string(p.id), "header": .string(p.header), "question": .string(p.question), "multiSelect": false,
+                 "options": .array(p.options.map { ["label": .string($0.label), "description": .string($0.description)] })]
+            }
+            return ["requestId": .string(q.requestId), "questions": .array([first] + rest)]
         case "respond":
             if o.modeEscalationDenied { throw FakeToolError(#"{"_tag":"OrchestratorMcpFailure","code":"runtime_mode_escalation_denied","message":"Child runtime mode auto is broader than the caller's approval-required."}"#) }
             guard let rid = args["requestId"].string else { throw FakeToolError("requestId required") }
