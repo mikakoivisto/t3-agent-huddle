@@ -171,6 +171,66 @@ struct StoreTests {
         #expect(s.sessions["t"]?.statusLine == "Done")
     }
 
+    @Test func aWaitFollowedByMoreShellWorkIsTakenAsDone() {
+        // Seen live: the agent waited on a build, the task finished inside the turn (no notification), the agent kept
+        // running commands, merged and finished.
+        let now = Date()
+        var s = HuddleState()
+        s.applyFinished([ThreadSummary(threadId: "t", status: .completed, updatedAt: HuddleStateTestClock.iso(now))], exhaustive: true, now: now)
+        s.applyRead(ThreadRead(threadId: "t", status: .completed, items: [
+            ActivityItem(position: 0, itemId: "a", type: "dynamic_tool", status: "completed",
+                         text: "{\"toolName\":\"mcp__t3-code__t3_background_wait\",\"input\":{\"taskIds\":[\"b1\"]}}"),
+            ActivityItem(position: 1, itemId: "b", type: "command_execution", status: "completed", text: "$ gh pr merge 7 --merge\n"),
+            ActivityItem(position: 2, itemId: "c", type: "assistant_message", status: "completed", text: "Merged.")]))
+        #expect(s.sessions["t"]?.isWorking == false)
+        #expect(s.sessions["t"]?.statusLine == "Done")
+    }
+
+    @Test func otherToolCallsAfterTheWaitDoNotEndIt() {
+        let now = Date()
+        var s = HuddleState()
+        s.applyFinished([ThreadSummary(threadId: "t", status: .completed, updatedAt: HuddleStateTestClock.iso(now))], exhaustive: true, now: now)
+        s.applyRead(ThreadRead(threadId: "t", status: .completed, items: [
+            ActivityItem(position: 0, itemId: "a", type: "dynamic_tool", status: "completed",
+                         text: "{\"toolName\":\"mcp__t3-code__t3_background_wait\",\"input\":{\"taskIds\":[\"b1\"]}}",
+                         updatedAt: HuddleStateTestClock.iso(now)),
+            ActivityItem(position: 1, itemId: "b", type: "dynamic_tool", status: "completed",
+                         text: "{\"toolName\":\"mcp__t3-code__link_pull_request\",\"input\":{}}"),
+            ActivityItem(position: 2, itemId: "c", type: "assistant_message", status: "completed", text: "Waiting on CI.")]))
+        #expect(s.sessions["t"]?.statusLine == "Waiting on a background task")
+        // The agent clears it explicitly.
+        s.applyRead(ThreadRead(threadId: "t", status: .completed, items: [
+            ActivityItem(position: 3, itemId: "d", type: "dynamic_tool", status: "completed",
+                         text: "{\"toolName\":\"mcp__t3-code__t3_background_wait\",\"input\":{\"taskIds\":[\"b1\"],\"waiting\":false}}")]))
+        #expect(s.sessions["t"]?.isWorking == false)
+    }
+
+    @Test func theWaitCapCountsFromTheWaitNotFromASettle() {
+        let now = Date()
+        var s = HuddleState()
+        s.applyFinished([ThreadSummary(threadId: "t", status: .completed, updatedAt: HuddleStateTestClock.iso(now))], exhaustive: true, now: now)
+        s.applyRead(ThreadRead(threadId: "t", status: .completed, items: [
+            ActivityItem(position: 0, itemId: "a", type: "dynamic_tool", status: "completed",
+                         text: "{\"toolName\":\"t3_background_wait\",\"input\":{\"taskIds\":[\"b1\"]}}",
+                         updatedAt: HuddleStateTestClock.iso(now.addingTimeInterval(-3 * 3600)))]))
+        #expect(s.sessions["t"]?.isWorking == false, "registered 3 hours ago, although the thread was touched just now")
+    }
+
+    @Test func aSettledThreadLeavesWhenItsReadSaysSo() {
+        var s = HuddleState()
+        s.applyActive([ThreadSummary(threadId: "t", status: .running)])
+        var read = ThreadRead(threadId: "t", status: .completed)
+        read.putAway = true
+        s.applyRead(read)
+        #expect(s.sessions["t"] == nil)
+        // A settled thread that works again is listed as active and comes back.
+        s.applyActive([ThreadSummary(threadId: "t", status: .running)])
+        var again = ThreadRead(threadId: "t", status: .running)
+        again.putAway = true
+        s.applyRead(again)
+        #expect(s.sessions["t"] != nil)
+    }
+
     @Test func aToolSearchMentioningBackgroundWaitIsNotAWait() {
         let item = ActivityItem(position: 0, itemId: "a", type: "dynamic_tool", status: "completed",
                                 text: "{\"toolName\": \"ToolSearch\", \"input\": {\"query\": \"select:mcp__t3-code__t3_background_wait\"}}")

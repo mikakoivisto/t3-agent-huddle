@@ -322,7 +322,7 @@ All of this lives in the huddle's memory. Only the small local-preferences recor
 
 ### Derived fields
 
-- **Membership**: a thread is in the huddle when it is active (`preparing`, `queued`, `starting`, `running`, `waiting`), or when the huddle saw it active during this app session and it has since finished without being settled, archived, snoozed, or hidden. As built it is also in when it finished within the last 30 minutes (even if never seen running), while one of its subagents is still working, or while it waits on a background task. Threads with a `parentThreadId` are excluded. `idle` threads are never listed.
+- **Membership**: a thread is in the huddle when it is active (`preparing`, `queued`, `starting`, `running`, `waiting`), or when the huddle saw it active during this app session and it has since finished without being settled, archived, snoozed, or hidden. As built, rows on the list are kept across restarts until closed or settled (spec 02), and a thread is also in when it finished within the last 30 minutes (even if never seen running), while one of its subagents is still working, or while it waits on a background task. Threads with a `parentThreadId` are excluded. `idle` threads are never listed.
 - **Header count** = number of sessions in the huddle.
 - **`statusLine`**, first match wins:
   1. `needs permission`

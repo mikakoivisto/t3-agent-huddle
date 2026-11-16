@@ -300,6 +300,23 @@ enum Snapshots {
                 .environment(\.snapshotMode, true), "59-settings-new-threads", dir, scale: 2)
         n.stop()
 
+        // J. Several questions in one request (spec 04): the first, a written answer, the review.
+        let j = await DemoRig.make(prefs: prefs.appendingPathComponent("j"))
+        DemoScenario.start(j.local, only: [DemoScenario.docs]); DemoScenario.addQuestion(j.local); DemoScenario.addMultiQuestion(j.local)
+        await j.refresh()
+        let jm = j.model
+        save(ids: [DemoScenario.changelog], jm, "60-questions-first", dir)
+        if let q = jm.state.sessions[DemoScenario.changelog]?.question {
+            jm.chooseMultiAnswer(q, q.parts[0].options[1].label)
+            jm.startWritingMultiAnswer(q)
+            jm.composer.drafts[HuddleModel.multiDraftKey(q.requestId, "q1")] = "Own section first, and repeat each one in its feature's entry."
+            save(ids: [DemoScenario.changelog], jm, "61-questions-writing", dir)
+            jm.useWrittenMultiAnswer(q)
+            jm.chooseMultiAnswer(q, q.parts[2].options[0].label)
+            save(ids: [DemoScenario.changelog], jm, "62-questions-review", dir)
+        }
+        j.stop()
+
         // D. Closing, the collapsed header, a jump that cannot be delivered, and T3 going away.
         let d = await DemoRig.make(prefs: prefs.appendingPathComponent("d"))
         DemoScenario.start(d.local); DemoScenario.addWaiters(d.local)

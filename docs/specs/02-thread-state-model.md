@@ -31,13 +31,16 @@
 2. **Subagents are never rows.** A listed thread with `parentThreadId` is dropped. A subagent is never read (reading marks it delivered in T3).
 3. **Finished refresh:** statuses `completed, failed, interrupted, cancelled`, `settled:false`, `limit:25`, **one page, no cursor chasing**. It runs when any known row is not active, or at least 10 s after the last run.
    - **Known rows are refreshed.** A known row that is now settled or snoozed leaves. A known, non-active row absent from an exhaustive page leaves (settled, archived or aged out).
+   - **A partial page cannot say why a row is missing**, so a known, non-active row absent from it is re-read (at most every 30 s per row); a read that says settled, snoozed or archived removes it (seen live: a settled row stayed while more than 25 unsettled finished threads existed).
    - **Recently finished rows are admitted** even if the app never saw them run: unsettled, not snoozed, no parent, `updatedAt` within **30 minutes**.
    - **Older finished rows are never newly admitted.**
 4. **Idle:** a row whose thread read says `idle` is removed. `idle` threads are never requested.
 5. **Left the active set without a finished report:** the row's status becomes unknown ("Unknown") until a finished page settles it. On a non-exhaustive page it can stay "Unknown".
 6. **Closed rows** (spec 01) are kept in state but filtered from view.
 
-A finished row stays until it is settled or snoozed in T3, closed, or drops out of an exhaustive finished page.
+A finished row stays until it is settled, snoozed or archived in T3 (seen in a list or in its own read), closed, or drops out of an exhaustive finished page.
+
+**Kept across restarts** (asked for by the maintainer): the ids of the rows on the list (and their machine) are saved in the preferences as `keptThreads`, ids only. After a restart each one that is not back through the lists is read by id on its own machine and returns as it was, however long ago it finished. It is forgotten when the user closes it, when T3 says it is settled, snoozed or archived, or when T3 cannot read it (deleted). A machine that cannot be reached is tried again (at most every 30 s per row). At most 300 ids are kept.
 
 ### Working
 
@@ -50,8 +53,10 @@ A finished row stays until it is settled or snoozed in T3, closed, or drops out 
 ### Waiting on a background task (inference)
 
 - **Starts:** an activity item of type `dynamic_tool` whose text, whitespace removed, contains `"toolName":"mcp__t3-code__t3_background_wait"` or `"toolName":"t3_background_wait"`. A tool search that merely mentions the name is not a wait.
-- **Ends:** a later `notification` item (the finished task woke the agent), or a new run.
-- **Cap:** 2 hours from the thread's `updatedAt`, so a task killed without notification stops counting.
+- **The wait does not block.** `t3_background_wait` returns at once ("keep this thread in Working while background work runs"), so the agent can go on working while the task runs, and T3 exposes no wait state (checked live: nothing in the thread's fields). While the turn runs T3 says "running" anyway; the inference only matters after the turn ends.
+- **Ends:** a later `notification` item (the finished task woke the agent); a wait call with `"waiting": false`; a later `command_execution` or `file_change` item (the agent went on with shell work or edits, so the wait is taken as done: seen live, where a task finished inside the turn, no notification came, and a settled thread kept showing the wait); or a new run. Other tool calls after it (linking a PR, a final message) do not end it.
+- **Known gap:** an agent that waits, keeps running commands, and ends its turn while the task still runs shows "Done" until T3 wakes it with a notification (a new run). T3 would need to expose its wait state to fix this.
+- **Cap:** 2 hours from the newest wait call (its item's `updatedAt`; the thread's own `updatedAt` only if the item has none), so a task killed without notification stops counting and a settle does not restart the clock.
 
 ### Waiting on a subagent (inference)
 
@@ -117,6 +122,8 @@ A thread is re-read only when `status`, `updatedAt` or `itemCount` changed, when
 | STM-05 | A finished thread stays until settled, then leaves; finished rows older than 30 minutes are not admitted; settled ones never are | `StoreTests.finishedSessionsStayUntilSettledThenLeave`; `StoreTests.finishedRowsAreNeverNewlyAdmitted`; `StoreTests.recentlyFinishedThreadIsAdmittedButOldOnesAreNot` | Fake |
 | STM-06 | The finished refresh is one page of 25 with no cursor, and an old backlog is never admitted | `HardeningTests.finishedRefreshIsOnePageWithNoCursorChasing` | Fake |
 | STM-07 | A completed thread waiting on `t3_background_wait` counts as working and shows "Waiting on a background task" until a notification arrives; a mention of the tool in a search is not a wait; a wait older than 2 hours stops counting | `StoreTests.waitingOnABackgroundTaskCountsAsWorkingEvenThoughT3SaysCompleted`; `StoreTests.aToolSearchMentioningBackgroundWaitIsNotAWait`; `StoreTests.staleBackgroundWaitStopsCountingAsWorking` | Fake |
+| STM-07b | A wait ends when the agent goes on with shell work or edits, or clears it (`waiting: false`), not on other tool calls; the cap counts from the wait; a settled finished row leaves on its own read, also behind a partial finished page | `StoreTests.aWaitFollowedByMoreShellWorkIsTakenAsDone`; `StoreTests.otherToolCallsAfterTheWaitDoNotEndIt`; `StoreTests.theWaitCapCountsFromTheWaitNotFromASettle`; `StoreTests.aSettledThreadLeavesWhenItsReadSaysSo`; `SettledBehindAFullPageTests.aSettledRowLeavesEvenWhenTheFinishedListIsPartial` | Fake; both cases seen live |
+| STM-07c | A done row comes back after a restart until closed; a closed row stays closed; a settled or deleted one is forgotten; only ids are stored | `KeptAcrossRestartsTests` | Fake |
 | STM-08 | A completed parent with active subagents counts as working and shows "Waiting on a subagent" / "Waiting on 2 subagents"; the child is not a row; it returns to "Done" when the children finish | `RunInfoTests.aWorkingSubagentKeepsACompletedParentWorking` | Fake |
 | STM-09 | Reasoning and user messages are not steps; approval items are prompts, not steps; error items become failed steps | `StoreTests.reasoningItemsAreNotSteps`; `LiveShapeTests.userMessagesAreNotStepsAndPathsAreShortened`; `RunInfoTests.theApprovalItemGivesTheExactCommandAndIsNotAStep`; `RunInfoTests.stepsKeepADetailAndErrorsFail` | Fake |
 | STM-10 | Activity is read for the latest run only, `afterPosition` is never negative, a new run restarts the steps from the top | `LiveShapeTests.activityReadsOnlyTheLatestRunAndNeverSendsNegativeAfterPosition`; `LiveShapeTests.newRunRestartsStepsFromTheTop` | Fake; the constraints themselves were found live |

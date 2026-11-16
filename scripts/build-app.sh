@@ -2,10 +2,16 @@
 # Builds dist/Agent Huddle.app (release, ad-hoc signed, menu-bar/accessory app with no Dock icon) and a zip.
 # Installs nothing: copy the .app to /Applications yourself if you want it there.
 set -euo pipefail
-VERSION="${VERSION:-0.1.0}"   # the release workflow passes the tag, e.g. VERSION=1.2.3
-# The version goes into Info.plist (XML): accept a plain x.y.z only, so a tag can never inject markup.
-[[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "build-app.sh: VERSION must look like 1.2.3 (got an invalid value)" >&2; exit 1; }
 cd "$(dirname "$0")/.."
+# The release workflow passes the tag (VERSION=1.2.3); a local build takes the newest v* tag, so About matches the release.
+if [[ -z "${VERSION:-}" ]]; then
+  VERSION="$(git describe --tags --abbrev=0 --match 'v[0-9]*' 2>/dev/null || echo v0.0.0)"; VERSION="${VERSION#v}"
+fi
+# Build number: the commit count, so every build from a newer commit is higher (About shows it in brackets).
+BUILD="${BUILD:-$(git rev-list --count HEAD 2>/dev/null || echo 1)}"
+# Both go into Info.plist (XML): accept plain numbers only, so a tag can never inject markup.
+[[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "build-app.sh: VERSION must look like 1.2.3 (got an invalid value)" >&2; exit 1; }
+[[ "$BUILD" =~ ^[0-9]+$ ]] || { echo "build-app.sh: BUILD must be a number (got an invalid value)" >&2; exit 1; }
 swift build -c release --product AgentHuddle
 BIN="$(swift build -c release --show-bin-path)/AgentHuddle"
 APP="dist/Agent Huddle.app"
@@ -34,7 +40,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>NSHumanReadableCopyright</key><string>Copyright © 2026 Mika Koivisto. MIT License.</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleShortVersionString</key><string>${VERSION}</string>
-  <key>CFBundleVersion</key><string>1</string>
+  <key>CFBundleVersion</key><string>${BUILD}</string>
   <key>LSMinimumSystemVersion</key><string>14.0</string>
   <key>LSUIElement</key><true/>
   <key>NSHighResolutionCapable</key><true/>

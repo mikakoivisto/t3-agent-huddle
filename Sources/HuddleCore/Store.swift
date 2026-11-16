@@ -70,6 +70,8 @@ public struct Session: Equatable, Sendable, Identifiable {
     /// The agent ended its turn but is waiting on a background task (`t3_background_wait`). T3 reports such a thread as
     /// `completed` with no active run, so this is inferred from the run's items.
     public var backgroundWait = false
+    /// When the newest wait was registered: the 2-hour cap counts from it, not from `updatedAt` (settling bumps that).
+    public var backgroundWaitAt: String?
     /// Subagent (delegated task) threads of this thread that are still working. T3 reports the parent as `completed`
     /// while it waits for them, like it does for a background task.
     public var activeChildren = 0
@@ -112,7 +114,7 @@ public struct Session: Equatable, Sendable, Identifiable {
     /// killed without a notification does not show as working forever).
     public var isWorking: Bool {
         t3Status.isActive || activeChildren > 0
-            || (backgroundWait && Date().timeIntervalSince(HuddleState.date(updatedAt)) < HuddleState.backgroundWaitCap)
+            || (backgroundWait && Date().timeIntervalSince(HuddleState.date(backgroundWaitAt ?? updatedAt)) < HuddleState.backgroundWaitCap)
     }
 
     public var attention: Attention {
@@ -128,7 +130,7 @@ public struct Session: Equatable, Sendable, Identifiable {
     /// SPEC §8: first match wins.
     public var statusLine: String {
         if permission != nil { return "needs permission" }
-        if question != nil { return "asks a question" }
+        if let q = question { return q.parts.count > 1 ? "asks \(q.parts.count) questions" : "asks a question" }
         if secretPrompt != nil { return "asks for a secret" }
         if t3Status.isActive, let running = steps.last(where: { $0.state == .running }) { return running.label }   // a finished thread never shows a stale step
         if !t3Status.isActive && activeChildren > 0 { return activeChildren == 1 ? "Waiting on a subagent" : "Waiting on \(activeChildren) subagents" }
@@ -254,6 +256,12 @@ public struct HuddleState: Equatable, Sendable {
         }
     }
 
+    /// A row kept from an earlier app session (spec 02), read back by id. Never a subagent, a settled or snoozed thread.
+    public mutating func restore(_ t: ThreadSummary) {
+        guard sessions[t.threadId] == nil, t.parentThreadId == nil, !t.settled, !t.snoozed, t.status != .idle else { return }
+        upsert(t)
+    }
+
     /// Membership: seen active this app session. (see applyFinished)
     private mutating func upsert(_ t: ThreadSummary) {
         // Thread ids are only unique per machine. A second machine reporting an id that is already shown for another machine
@@ -302,6 +310,8 @@ public struct HuddleState: Equatable, Sendable {
         s.activeRunId = read.activeRunId
         // `idle` threads are never listed (§8): a session that resolves to idle leaves the huddle.
         if read.status == .idle { sessions[read.threadId] = nil; return }
+        // Settled (or snoozed, archived) and finished: gone from the huddle, like `applyFinished` does for listed threads.
+        if read.putAway && !read.status.isActive { sessions[read.threadId] = nil; return }
         if read.status != .unknown { s.t3Status = read.status }
         s.providerInstanceId = read.providerInstanceId ?? s.providerInstanceId; s.model = read.model ?? s.model
         s.branch = read.branch ?? s.branch; s.runCount = read.runCount ?? s.runCount
@@ -321,8 +331,17 @@ public struct HuddleState: Equatable, Sendable {
             } else { s.steps.append(step) }
         }
         for item in read.items.sorted(by: { $0.position < $1.position }) {
-            if Self.isBackgroundWait(item) { s.backgroundWait = true }
+            // T3's wait does not block: the agent may keep working while the task runs, and T3 shows no wait state. While the
+            // turn runs T3 says "running" anyway, so the wait only matters once the turn ends. Shell commands or edits after
+            // the newest wait mean the agent went on working, and the wait is taken as done (seen live: the task finished
+            // inside the turn, no notification came, and a settled thread showed the wait). Other tool calls (linking a
+            // PR, a final message) do not end it.
+            if Self.isBackgroundWait(item) {
+                let clears = Self.isBackgroundWaitCleared(item)
+                s.backgroundWait = !clears; s.backgroundWaitAt = clears ? nil : (item.updatedAt ?? s.backgroundWaitAt)
+            }
             else if item.type == "notification" { s.backgroundWait = false }   // the task finished and woke the agent
+            else if item.type == "command_execution" || item.type == "file_change" { s.backgroundWait = false }
         }
         s.steps.sort { $0.position < $1.position }
         if s.steps.count > 200 { s.steps.removeFirst(s.steps.count - 200) }
@@ -363,6 +382,11 @@ public struct HuddleState: Equatable, Sendable {
     public mutating func hide(_ threadId: String) { hiddenIDs.insert(threadId) }
 
     // MARK: Helpers
+
+    /// `t3_background_wait` with `"waiting": false`: the agent cleared its wait.
+    static func isBackgroundWaitCleared(_ item: ActivityItem) -> Bool {
+        (item.text ?? "").filter { !$0.isWhitespace }.contains("\"waiting\":false")
+    }
 
     /// The agent called `t3_background_wait`: its turn ends while a background task keeps running.
     static func isBackgroundWait(_ item: ActivityItem) -> Bool {
@@ -533,6 +557,9 @@ public struct Preferences: Codable, Equatable, Sendable {
     public var settingsOnTop: Bool?
     /// Spec 16: defaults for new threads and what was used last.
     public var newThread: NewThreadDefaults?
+    /// Spec 02: rows kept across restarts until closed or put away in T3. Thread id → machine id ("" = this Mac).
+    /// Ids only, like `hiddenIDs`: no titles, no content.
+    public var keptThreads: [String: String]?
     public init() {}
 }
 

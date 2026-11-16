@@ -88,6 +88,22 @@ public enum DemoScenario {
         ], providerInstanceId: "pi", model: "ollama/qwen3.8-pi:latest", runningFor: 42, projectId: "proj_release"))
     }
 
+    /// A request with three questions at once (spec 04): a plan the agent wants settled before it writes.
+    public static func addMultiQuestion(_ s: FakeT3Server) {
+        s.update(changelog) { t in
+            t.questions = [.init(requestId: "req_plan", header: "Scope", question: "What goes into the 2.4 notes?",
+                                 options: ["Features and fixes", "Everything, grouped", "Highlights only"],
+                                 more: [
+                .init(id: "q1", header: "Breaking", question: "How should breaking changes be shown?",
+                      options: [("Own section first (Recommended)", "Readers see them before anything else."),
+                                ("Inline, marked", "Kept next to the feature they belong to.")]),
+                .init(id: "q2", header: "Credits", question: "Thank outside contributors by name?",
+                      options: [("Yes, at the end (Recommended)", "One line per person, linked to the PR."),
+                                ("No", "Keep the notes short.")]),
+            ])]
+        }
+    }
+
     /// The answer was sent: the agent carries on.
     public static func continueAfterAnswer(_ s: FakeT3Server) {
         s.update(changelog) { t in

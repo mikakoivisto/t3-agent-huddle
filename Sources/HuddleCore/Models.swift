@@ -168,6 +168,8 @@ public struct ThreadRead: Equatable, Sendable {
     public var runCount: Int?
     /// The newest run (`recentRuns` with `runLimit: 1`): start, end and the model that actually executed.
     public var run: RunInfo?
+    /// Settled, snoozed or archived in T3: a finished thread that says so leaves the huddle.
+    public var putAway = false
 
     public init(threadId: String, status: T3Status, title: String? = nil, activeRunId: String? = nil,
                 pendingRequestCount: Int = 0, items: [ActivityItem] = [], hasMore: Bool = false, latestRunId: String? = nil,
@@ -192,6 +194,7 @@ public struct ThreadRead: Equatable, Sendable {
             providerInstanceId: t["providerInstanceId"].string, model: t["model"].string, branch: t["branch"].string,
             runCount: t["runCount"].int,
             run: (j["recentRuns"].array ?? []).compactMap(RunInfo.init(json:)).max(by: { $0.ordinal < $1.ordinal }))
+        putAway = t["settled"].bool == true || t["snoozed"].bool == true || t["archived"].bool == true
     }
 }
 
@@ -220,6 +223,18 @@ public struct QuestionOption: Equatable, Sendable, Hashable {
     public init(label: String, detail: String? = nil) { self.label = label; self.detail = detail }
 }
 
+/// One question of a request that asks several at once (spec 04).
+public struct QuestionPart: Equatable, Sendable {
+    public var id: String
+    public var tag: String?
+    public var prompt: String
+    public var options: [QuestionOption]
+    public var multiSelect: Bool
+    public init(id: String, tag: String? = nil, prompt: String, options: [QuestionOption], multiSelect: Bool = false) {
+        self.id = id; self.tag = tag; self.prompt = prompt; self.options = options; self.multiSelect = multiSelect
+    }
+}
+
 public struct Question: Equatable, Sendable {
     public var requestId: String
     public var threadId: String
@@ -232,10 +247,17 @@ public struct Question: Equatable, Sendable {
     public var answerableInWidget: Bool
     /// A single, not multi-select question: it can be answered with text the user writes (spec 13), options or not.
     public var freeTextAnswerable: Bool
+    /// Every question of the request, in order (one entry for a single question).
+    public var parts: [QuestionPart]
+    /// Several questions, none multi-select, distinct ids: answered one at a time in the panel and sent together (spec 04).
+    public var multiAnswerable: Bool {
+        parts.count > 1 && parts.allSatisfy { !$0.multiSelect } && Set(parts.map(\.id)).count == parts.count
+    }
 
     public init(requestId: String, threadId: String, questionId: String = "0", tag: String? = nil,
                 prompt: String, options: [QuestionOption], multiSelect: Bool = false,
-                answerableInWidget: Bool = true, freeTextAnswerable: Bool = false) {
+                answerableInWidget: Bool = true, freeTextAnswerable: Bool = false, parts: [QuestionPart] = []) {
+        self.parts = parts
         self.requestId = requestId; self.threadId = threadId; self.questionId = questionId
         self.tag = tag; self.prompt = prompt; self.options = options
         self.multiSelect = multiSelect; self.answerableInWidget = answerableInWidget
@@ -266,11 +288,29 @@ public enum QuestionCodec {
         }
         let multi = first["multiSelect"].bool ?? false
         let simple = qs.count <= 1 && !multi && !options.isEmpty
+        let parts: [QuestionPart] = qs.enumerated().compactMap { i, p in
+            guard let text = p["question"].string ?? p["prompt"].string ?? p["text"].string else { return nil }
+            let opts = (p["options"].array ?? []).compactMap { o -> QuestionOption? in
+                if let s = o.string { return QuestionOption(label: s) }
+                guard let l = o["label"].string else { return nil }
+                return QuestionOption(label: l, detail: o["description"].string)
+            }
+            return QuestionPart(id: p["id"].string ?? "\(i)", tag: p["header"].string ?? p["tag"].string, prompt: text,
+                                options: opts, multiSelect: p["multiSelect"].bool ?? false)
+        }
         return Question(requestId: requestId, threadId: threadId,
                         questionId: first["id"].string ?? "0",
                         tag: first["header"].string ?? first["tag"].string,
                         prompt: prompt, options: options, multiSelect: multi,
-                        answerableInWidget: simple, freeTextAnswerable: qs.count <= 1 && !multi)
+                        answerableInWidget: simple, freeTextAnswerable: qs.count <= 1 && !multi,
+                        parts: parts.count == qs.count ? parts : [])
+    }
+
+    /// Arguments for answering every question of a request at once: `{answers: {<question id>: <label or written text>}}`.
+    /// Seen live: T3 hands the agent exactly this map when the user answers four questions in T3 Code.
+    public static func respondArguments(question q: Question, answers: [String: String]) -> JSON {
+        ["action": "respond", "threadId": .string(q.threadId), "requestId": .string(q.requestId),
+         "answers": .object(answers.mapValues { .string($0) })]
     }
 
     /// Arguments for `respond`. Shape ASSUMED: `{requestId, answers: {<questionId>: <label or written text>}}`.
