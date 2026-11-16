@@ -261,11 +261,18 @@ struct HardeningTests {
         #expect(s.answers.count == 1)
     }
 
-    @Test func multiSelectFallsBackToTypeInT3() async throws {
+    @Test func multiSelectIsAnsweredWithCheckboxesAsOneText() async throws {
         let s = try await startFake(); defer { s.stop() }
         s.update(Scenario.questionThread) { $0.questions[0].multiSelect = true }
         let m = makeModel(s); await m.refresh()
-        #expect(m.state.sessions[Scenario.questionThread]?.question?.answerableInWidget == false)
+        let q = try #require(m.state.sessions[Scenario.questionThread]?.question)
+        #expect(q.answerableInWidget && q.multiSelect && q.freeTextAnswerable)
+        let labels = q.options.map(\.label)
+        m.select(option: labels[2], for: q); m.select(option: labels[0], for: q)
+        m.select(option: labels[1], for: q); m.select(option: labels[1], for: q)   // ticked, then unticked
+        await m.sendAnswer(threadId: Scenario.questionThread)
+        let a = try #require(s.answers.first)
+        #expect(a.answers["q0"].string == "\(labels[0]), \(labels[2])", "the picks in the question's order, one text")
     }
 
     @Test func failedPendingListIsNotInferredAsPermission() async throws {

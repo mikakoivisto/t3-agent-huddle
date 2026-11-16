@@ -29,6 +29,23 @@ extension HuddleModel {
         goToMultiStep(q, next)
     }
 
+    /// A box of a multi-select question among several: toggles it; the answer is every pick, and it does not move on.
+    public func toggleMultiCheck(_ q: Question, _ label: String) {
+        guard q.multiAnswerable, questionStates[q.requestId] != .sending else { return }
+        let i = multiStep(q)
+        guard q.parts.indices.contains(i), q.parts[i].multiSelect else { return }
+        let part = q.parts[i], key = Self.multiDraftKey(q.requestId, part.id)
+        var picks = checks[key] ?? []
+        if picks.contains(label) { picks.remove(label) } else { picks.insert(label) }
+        checks[key] = picks
+        multiAnswers[q.requestId, default: [:]][part.id] = Question.joinPicks(picks, options: part.options)
+        if case .error = questionStates[q.requestId] { questionStates[q.requestId] = .pending }
+    }
+
+    public func multiChecked(_ q: Question, _ part: QuestionPart) -> Set<String> {
+        checks[Self.multiDraftKey(q.requestId, part.id)] ?? []
+    }
+
     public func startWritingMultiAnswer(_ q: Question) {
         if let open = composingThreadId { closeComposer(open) }
         multiWritingFor = q.requestId
@@ -44,6 +61,7 @@ extension HuddleModel {
         let text = composer.text(key).trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty, text.count <= Self.maxMessageLength else { return }
         multiWritingFor = nil
+        checks[key] = nil   // a written answer replaces any ticked boxes
         chooseMultiAnswer(q, text)
     }
 
@@ -61,6 +79,7 @@ extension HuddleModel {
             justAnswered[threadId] = Date()
             questionStates[q.requestId] = nil
             multiAnswers[q.requestId] = nil; multiSteps[q.requestId] = nil
+            for p in q.parts { checks[Self.multiDraftKey(q.requestId, p.id)] = nil }
             for p in q.parts { composer.drafts[Self.multiDraftKey(q.requestId, p.id)] = nil }
             state.clearPending(threadId: threadId)
             showRowToast(threadId, "\(q.parts.count) answers sent")

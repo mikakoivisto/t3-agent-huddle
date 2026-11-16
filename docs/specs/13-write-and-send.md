@@ -28,7 +28,7 @@ These change existing hard rules, so they are listed first.
 | Thread state | Entry point | What Send does |
 |---|---|---|
 | Asks a question you can answer (spec 04) | **Write answer** button next to Send. **Type in T3 Code** is removed; the row's ↗ already opens the thread. | Answers the question with your text |
-| Asks a question the panel cannot show (several questions, multi-select, unreadable) | none: the prompt and "Answer this one in T3 Code"; the row's ↗ opens it | — |
+| Asks a question the panel cannot show (repeated question ids, unreadable) | none: the prompt and "Answer this one in T3 Code"; the row's ↗ opens it | — |
 | Working (T3 status `running`) | **Message** button (speech bubble) on the row and in the detail header | **Queue** (default) or **Steer** |
 | Working only by inference (waiting on a background task or a subagent, spec 02) | **Message** | **Send** (T3 reports the turn as completed, so `queue` starts a new turn now; there is no turn to steer). The button is labelled from T3's status, not from the panel's "working". |
 | Done, idle or recently finished | **Message** | Starts a new turn (`queue`) |
@@ -92,7 +92,7 @@ T3 refuses a send **and a question answer** (picked option or written) to a thre
 | SND-03 | A retry reuses the `clientRequestId`, an edit or a flipped mode mints a new one; a double click sends one request | `aRetryReusesTheRequestIdAndAnEditGetsANewOne`, `aRepeatedRequestIdIsDeliveredOnce` | Fake |
 | SND-04 | Read-only mode sends nothing | `readOnlyModeSendsNothing` | Fake |
 | SND-05 | The composer's target cannot change: a thread that changes machine or collides disables Send; empty or overlong text is not sent; asking threads get no composer | `theTargetCannotChangeUnderTheComposer`, `emptyOrOverlongTextIsNotSent`, `threadsThatAskForSomethingGetThatFirst` | Fake |
-| SND-06 | A free-text answer calls `respond` with the typed text for the question id; multi-select and several questions cannot be written | `aWrittenAnswerIsSentAsTyped`, `multiSelectQuestionsCannotBeWritten` | Fake |
+| SND-06 | A free-text answer calls `respond` with the typed text for the question id; a multi-select question can be written too (T3 took that live); several questions are written one at a time in their own flow (spec 04) | `aWrittenAnswerIsSentAsTyped`, `aMultiSelectQuestionCanBeWrittenButNotAPartOfSeveral` | Fake; multi-select written answer Live |
 | SND-07 | Messages never reach the log | `messagesNeverReachTheLog` | Fake |
 | SND-08 | Only `queue` and `steer` reach T3, never `freshContext`, launch, interrupt or `t3_queue`; one typed call site | `onlyQueueAndSteerEverReachT3`, `theOnlySendCallSiteIsTheTypedOne`, `ModelTests.clientNeverCallsForbiddenToolsOrIncludeSubagents` (polling) | Fake |
 | SND-09 | Without `t3_thread_send` or its `mode` argument, there is no Message button and nothing is sent; polling never sends | `withoutTheToolOrItsModeArgumentThereIsNoMessageButton`, `pollingNeverSends` | Fake |

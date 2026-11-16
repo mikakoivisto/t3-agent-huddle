@@ -100,6 +100,8 @@ public final class HuddleModel: ObservableObject {
     @Published public var selections: [String: String] = [:]          // requestId → option label
     /// Several questions in one request (spec 04): which one is shown (== count: the review), and the answers so far.
     @Published public internal(set) var multiSteps: [String: Int] = [:]
+    /// Ticked boxes of multi-select questions: by request id, or by `multiDraftKey` for one of several questions.
+    @Published public internal(set) var checks: [String: Set<String>] = [:]
     @Published public internal(set) var multiAnswers: [String: [String: String]] = [:]
     /// The request whose current question is being written (one at a time).
     @Published public internal(set) var multiWritingFor: String?
@@ -256,6 +258,7 @@ public final class HuddleModel: ObservableObject {
         questionStates = questionStates.filter { liveRequests.contains($0.key) }
         selections = selections.filter { liveRequests.contains($0.key) }
         multiSteps = multiSteps.filter { liveRequests.contains($0.key) }
+        checks = checks.filter { k, _ in liveRequests.contains(where: { k == $0 || k.hasPrefix("m|\($0)|") }) }
         multiAnswers = multiAnswers.filter { liveRequests.contains($0.key) }
         if projectNames.count > 300 { projectNames.removeAll(); projectLookups.removeAll() }
         pruneComposeState(liveThreads: live, liveRequests: liveRequests)
@@ -725,7 +728,14 @@ public final class HuddleModel: ObservableObject {
     }
 
     public func select(option: String, for question: Question) {
-        selections[question.requestId] = option
+        if question.multiSelect {   // a checkbox: toggles, and Send sends every pick
+            var picks = checks[question.requestId] ?? []
+            if picks.contains(option) { picks.remove(option) } else { picks.insert(option) }
+            checks[question.requestId] = picks
+            selections[question.requestId] = Question.joinPicks(picks, options: question.options)
+        } else {
+            selections[question.requestId] = option
+        }
         if case .error = questionStates[question.requestId] { questionStates[question.requestId] = .pending }
     }
 
@@ -739,7 +749,7 @@ public final class HuddleModel: ObservableObject {
             try await onMachine(threadId) { c, env in try await c.respond(question: q, selection: choice, environment: env) }
             justAnswered[threadId] = Date()
             questionStates[q.requestId] = nil
-            selections[q.requestId] = nil
+            selections[q.requestId] = nil; checks[q.requestId] = nil
             state.clearPending(threadId: threadId)
             await refresh(force: true)
         } catch {
