@@ -235,11 +235,13 @@ struct SendTests {
         #expect(m.state.sessions[Scenario.questionThread]?.question == nil)
     }
 
-    @Test func multiSelectQuestionsCannotBeWritten() {
+    @Test func aMultiSelectQuestionCanBeWrittenButNotAPartOfSeveral() {
         let multi = QuestionCodec.question(fromRead: ["requestId": "r", "questions": [["id": "q", "question": "Pick", "options": ["a", "b"], "multiSelect": true]]], threadId: "t")
         let several = QuestionCodec.question(fromRead: ["requestId": "r", "questions": [["id": "q1", "question": "A"], ["id": "q2", "question": "B"]]], threadId: "t")
         let open = QuestionCodec.question(fromRead: ["requestId": "r", "questions": [["id": "q", "question": "Why?"]]], threadId: "t")
-        #expect(multi?.freeTextAnswerable == false && several?.freeTextAnswerable == false)
+        // Seen live: T3 took a written answer to a multi-select question as plain text. Several questions are written one
+        // at a time in their own flow (spec 04), not through this single-answer editor.
+        #expect(multi?.freeTextAnswerable == true && several?.freeTextAnswerable == false)
         #expect(open?.freeTextAnswerable == true && open?.answerableInWidget == false)
     }
 

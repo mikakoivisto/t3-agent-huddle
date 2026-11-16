@@ -104,6 +104,14 @@ public enum DemoScenario {
         }
     }
 
+    /// A multi-select question: pick any of them (spec 04).
+    public static func addMultiSelectQuestion(_ s: FakeT3Server) {
+        s.update(changelog) { t in
+            t.questions = [.init(requestId: "req_sections", header: "Sections", question: "Which sections should the 2.4 notes have?",
+                                 options: ["Features", "Fixes", "Breaking changes", "Contributors"], multiSelect: true)]
+        }
+    }
+
     /// The answer was sent: the agent carries on.
     public static func continueAfterAnswer(_ s: FakeT3Server) {
         s.update(changelog) { t in
