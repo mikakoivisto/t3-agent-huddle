@@ -131,7 +131,8 @@ public enum DemoScenario {
     public static func startWaiting(_ s: FakeT3Server) {
         s.update(ciWatch) { t in
             t.items.append(.init(position: 1, itemId: "item_bg", type: "dynamic_tool", status: "completed", title: "Wait for background task",
-                                 text: "{\"toolName\":\"t3_background_wait\",\"input\":{\"taskId\":\"ci-8812\"}}"))
+                                 text: "{\"toolName\":\"mcp__t3-code__t3_background_wait\",\"input\":{\"taskIds\":[\"bci8812\"]},"
+                                     + "\"output\":{\"structuredContent\":{\"matched\":[\"bci8812\"],\"unmatched\":[]}}}"))
             t.status = "completed"
         }
         s.add(T(id: shardChild, title: "Shard 3 of 4", status: "running", parentThreadId: shards, runningFor: 30, projectId: "proj_app"))
@@ -139,7 +140,9 @@ public enum DemoScenario {
     }
     public static func finishWaiting(_ s: FakeT3Server) {
         s.update(ciWatch) { t in
-            t.items.append(.init(position: 2, itemId: "item_note", type: "notification", status: "completed", title: nil, text: "CI finished: success"))
+            // T3's own notice when the waited-on command exits (a watched PR's notice would not end the wait).
+            t.items.append(.init(position: 2, itemId: "turn-item:message:message%3Athread%3Athr_ci%3Aordinal%3A1%3Anote", type: "notification",
+                                 status: "completed", title: nil, text: "Command \"gh run watch 8812\" finished"))
             t.items.append(.init(position: 3, itemId: "item_msg", type: "assistant_message", status: "completed", title: nil, text: "CI is green on release/2.4."))
         }
         s.update(shardChild) { $0.status = "completed" }
