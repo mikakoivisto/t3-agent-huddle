@@ -164,9 +164,10 @@ struct StoreTests {
         #expect(s.sessions["t"]?.isWorking == true)
         #expect(s.sessions["t"]?.statusLine == "Waiting on a background task")
         #expect(s.sessions["t"]?.attention == Attention.none)
-        // The task finishes: a notification starts the next run and the wait ends.
+        // The task finishes: T3's notice starts the next run and the wait ends.
         s.applyRead(ThreadRead(threadId: "t", status: .completed, items: [
-            ActivityItem(position: 3, itemId: "d", type: "notification", status: "completed", text: "Command finished")]))
+            ActivityItem(position: 3, itemId: "turn-item:message:message%3Athread%3At%3Aordinal%3A1%3An1", type: "notification",
+                         status: "completed", text: "Command \"sleep 180 && echo done\" finished")]))
         #expect(s.sessions["t"]?.isWorking == false)
         #expect(s.sessions["t"]?.statusLine == "Done")
     }
@@ -177,13 +178,94 @@ struct StoreTests {
         let now = Date()
         var s = HuddleState()
         s.applyFinished([ThreadSummary(threadId: "t", status: .completed, updatedAt: HuddleStateTestClock.iso(now))], exhaustive: true, now: now)
+        let iso = { (minutes: Double) in HuddleStateTestClock.iso(now.addingTimeInterval(minutes * 60)) }
         s.applyRead(ThreadRead(threadId: "t", status: .completed, items: [
             ActivityItem(position: 0, itemId: "a", type: "dynamic_tool", status: "completed",
-                         text: "{\"toolName\":\"mcp__t3-code__t3_background_wait\",\"input\":{\"taskIds\":[\"b1\"]}}"),
-            ActivityItem(position: 1, itemId: "b", type: "command_execution", status: "completed", text: "$ gh pr merge 7 --merge\n"),
-            ActivityItem(position: 2, itemId: "c", type: "assistant_message", status: "completed", text: "Merged.")]))
+                         text: "{\"toolName\":\"mcp__t3-code__t3_background_wait\",\"input\":{\"taskIds\":[\"b1\"]}}",
+                         updatedAt: iso(-30), runId: "r1"),
+            ActivityItem(position: 1, itemId: "b", type: "command_execution", status: "completed", text: "$ gh pr merge 7 --merge\n",
+                         updatedAt: iso(-20), runId: "r1"),
+            ActivityItem(position: 2, itemId: "c", type: "assistant_message", status: "completed", text: "Merged.", updatedAt: iso(-20), runId: "r1")]))
         #expect(s.sessions["t"]?.isWorking == false)
         #expect(s.sessions["t"]?.statusLine == "Done")
+    }
+
+    /// Seen live: the agent started two builds in the background, waited on them, peeked at the log 26 s later and ended
+    /// its turn. A watched PR's notice then started another run, which ran commands and ended too. T3 kept the thread in
+    /// Working all along (the builds were still running); the panel said Done.
+    static func waitThenPeekThenAnotherRun(_ now: Date) -> [ActivityItem] {
+        let iso = { (seconds: Double) in HuddleStateTestClock.iso(now.addingTimeInterval(seconds)) }
+        let wait = "{\n  \"toolName\": \"mcp__t3-code__t3_background_wait\",\n  \"input\": {\n    \"taskIds\": [\n      \"b2\"\n    ]\n  },\n"
+            + "  \"output\": {\n    \"content\": \"{\\\"matched\\\":[\\\"b2\\\"],\\\"unmatched\\\":[]}\",\n"
+            + "    \"structuredContent\": {\n      \"matched\": [\n        \"b2\"\n      ],\n      \"unmatched\": []\n    }\n  }\n}"
+        let stale = wait.replacingOccurrences(of: "b2", with: "b1").replacingOccurrences(of: "\"matched\": [\n        \"b1\"\n      ]", with: "\"matched\": []")
+            .replacingOccurrences(of: "\\\"matched\\\":[\\\"b1\\\"],\\\"unmatched\\\":[]", with: "\\\"matched\\\":[],\\\"unmatched\\\":[\\\"b1\\\"]")
+        return [
+            ActivityItem(position: 0, itemId: "u1", type: "user_message", status: "completed", text: "Time both builds.", updatedAt: iso(-60), runId: "r1"),
+            ActivityItem(position: 1, itemId: "c1", type: "command_execution", status: "completed",
+                         text: "$ bash run.sh\nCommand running in background with ID: b2.", updatedAt: iso(-15), runId: "r1"),
+            ActivityItem(position: 2, itemId: "w0", type: "dynamic_tool", status: "completed", text: stale, updatedAt: iso(-15), runId: "r1"),
+            ActivityItem(position: 3, itemId: "w1", type: "dynamic_tool", status: "completed", text: wait, updatedAt: iso(0), runId: "r1"),
+            ActivityItem(position: 4, itemId: "c2", type: "command_execution", status: "completed",
+                         text: "$ sleep 20; grep -m1 Builder baseline.log", updatedAt: iso(26), runId: "r1"),
+            ActivityItem(position: 5, itemId: "m1", type: "assistant_message", status: "completed", text: "Both builds are running.",
+                         updatedAt: iso(30), runId: "r1"),
+            ActivityItem(position: 6, itemId: "turn-item:message:message%3Apr-watch%3Ap1", type: "notification", status: "completed",
+                         text: "#12: checks failed", updatedAt: iso(410), runId: "r2"),
+            ActivityItem(position: 7, itemId: "c3", type: "command_execution", status: "completed", text: "$ gh run rerun 99 --failed",
+                         updatedAt: iso(430), runId: "r2"),
+            ActivityItem(position: 8, itemId: "m2", type: "assistant_message", status: "completed", text: "Re-ran the flaky job.",
+                         updatedAt: iso(460), runId: "r2"),
+        ]
+    }
+
+    @Test func aWaitOutlivesAQuickPeekAPRNoticeAndALaterRun() {
+        let now = Date().addingTimeInterval(-600)
+        let items = Self.waitThenPeekThenAnotherRun(now)
+        // One cold read of the whole thread (what a restart does).
+        var cold = HuddleState()
+        cold.applyFinished([ThreadSummary(threadId: "t", status: .completed, updatedAt: HuddleStateTestClock.iso(now))], exhaustive: true, now: now)
+        cold.applyRead(ThreadRead(threadId: "t", status: .completed, items: items, latestRunId: "r2"))
+        #expect(cold.sessions["t"]?.statusLine == "Waiting on a background task")
+        // Polling: run r1 read as it ended, then run r2 appears and the panel re-reads from the top.
+        var live = HuddleState()
+        live.applyFinished([ThreadSummary(threadId: "t", status: .completed, updatedAt: HuddleStateTestClock.iso(now))], exhaustive: true, now: now)
+        _ = live.noteRun(threadId: "t", latestRunId: "r1")
+        live.applyRead(ThreadRead(threadId: "t", status: .completed, items: Array(items[0...5]), latestRunId: "r1"))
+        #expect(live.sessions["t"]?.statusLine == "Waiting on a background task")
+        let restarted = live.noteRun(threadId: "t", latestRunId: "r2")
+        #expect(restarted)
+        live.applyRead(ThreadRead(threadId: "t", status: .completed, items: items, latestRunId: "r2"))
+        #expect(live.sessions["t"]?.statusLine == "Waiting on a background task")
+        // The builds finish: T3's own notice wakes the agent and ends the wait.
+        let done = ActivityItem(position: 9, itemId: "turn-item:message:message%3Athread%3At%3Aordinal%3A1%3An2", type: "notification",
+                                status: "completed", text: "Command \"bash run.sh\" finished", runId: "r3")
+        for var s in [cold, live] {
+            s.applyRead(ThreadRead(threadId: "t", status: .completed, items: [done], latestRunId: "r2"))
+            #expect(s.sessions["t"]?.isWorking == false)
+        }
+    }
+
+    @Test func aWaitThatMatchedNoTaskNeitherStartsNorEndsAWait() {
+        let items = Self.waitThenPeekThenAnotherRun(Date())
+        let stale = items[2]
+        #expect(HuddleState.backgroundWaitMatchedNothing(stale))
+        #expect(!HuddleState.backgroundWaitMatchedNothing(items[3]), "\"unmatched\":[] must not read as nothing matched")
+        var s = HuddleState()
+        s.applyFinished([ThreadSummary(threadId: "t", status: .completed, updatedAt: HuddleStateTestClock.iso(Date()))], exhaustive: true)
+        s.applyRead(ThreadRead(threadId: "t", status: .completed, items: [stale]))
+        #expect(s.sessions["t"]?.isWorking == false)
+        s.applyRead(ThreadRead(threadId: "t", status: .completed, items: [items[3], stale]))
+        #expect(s.sessions["t"]?.isWorking == true)
+    }
+
+    @Test func onlyT3sCommandNoticeEndsAWait() {
+        #expect(HuddleState.isTaskFinishedNotice(ActivityItem(position: 0, itemId: "turn-item:message:message%3Athread%3At%3Aordinal%3A1%3Ax",
+                                                              type: "notification", status: "completed", text: "Command \"make\" finished")))
+        #expect(HuddleState.isTaskFinishedNotice(ActivityItem(position: 0, itemId: "n", type: "notification", status: "completed",
+                                                              text: "Command \"make\" finished")))
+        #expect(!HuddleState.isTaskFinishedNotice(ActivityItem(position: 0, itemId: "turn-item:message:message%3Apr-watch%3Ax",
+                                                               type: "notification", status: "completed", text: "#8: checks passed")))
     }
 
     @Test func otherToolCallsAfterTheWaitDoNotEndIt() {

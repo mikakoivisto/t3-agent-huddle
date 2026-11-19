@@ -113,8 +113,8 @@ public final class MCPClient: @unchecked Sendable {
         return ThreadListPage(json: try await callTool("t3_thread_list", withEnv(args, environment)))
     }
 
-    /// Activity of the **latest run only** (`runLimit: 1`; live T3 numbers positions inside that window and
-    /// `afterPosition` must be ≥ 0). Pass `afterPosition: nil` to start from the top of the run.
+    /// Activity items, paged by position. Positions are thread-wide (`runLimit: 1` limits only `recentRuns`, seen live) and
+    /// `afterPosition` must be ≥ 0. Pass `afterPosition: nil` to start from the thread's first item.
     public func readActivity(threadId: String, afterPosition: Int?, limit: Int = 50,
                              maxChars: Int = 400, environment: String? = nil) async throws -> ThreadRead {
         var args: [String: JSON] = ["threadId": .string(threadId), "view": "activity", "runLimit": 1,

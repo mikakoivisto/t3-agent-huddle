@@ -72,6 +72,8 @@ public struct Session: Equatable, Sendable, Identifiable {
     public var backgroundWait = false
     /// When the newest wait was registered: the 2-hour cap counts from it, not from `updatedAt` (settling bumps that).
     public var backgroundWaitAt: String?
+    /// The run the newest wait was registered in: only work in that same run can end it (see `applyRead`).
+    public var backgroundWaitRun: String?
     /// Subagent (delegated task) threads of this thread that are still working. T3 reports the parent as `completed`
     /// while it waits for them, like it does for a background task.
     public var activeChildren = 0
@@ -290,14 +292,16 @@ public struct HuddleState: Equatable, Sendable {
         return p.t3Status != summary.status || p.updatedAt != summary.updatedAt || p.itemCount != summary.itemCount
     }
 
-    /// Live T3 numbers activity positions inside the latest-run window, so a new run restarts at 0.
     /// Returns true when the run changed: steps are dropped and the caller must re-read from the top.
     public mutating func noteRun(threadId: String, latestRunId: String?) -> Bool {
         guard var s = sessions[threadId], let run = latestRunId else { return false }
         defer { sessions[threadId] = s }
         guard let known = s.latestRunId else { s.latestRunId = run; return false }
         if known == run { return false }
-        s.latestRunId = run; s.steps = []; s.lastPosition = -1; s.backgroundWait = false; s.secretPrompt = nil
+        // The re-read starts from the thread's first item (T3 positions are thread-wide), so a wait from an earlier run
+        // whose task still runs is found again.
+        s.latestRunId = run; s.steps = []; s.lastPosition = -1; s.secretPrompt = nil
+        s.backgroundWait = false; s.backgroundWaitAt = nil; s.backgroundWaitRun = nil
         s.approvalText = nil; s.approvalRequestId = nil   // the old run's request can no longer be decided
         hiddenIDs.remove(threadId)   // a new run: the thread is working again
         return true
@@ -330,19 +334,7 @@ public struct HuddleState: Equatable, Sendable {
                 s.steps[i] = step
             } else { s.steps.append(step) }
         }
-        for item in read.items.sorted(by: { $0.position < $1.position }) {
-            // T3's wait does not block: the agent may keep working while the task runs, and T3 shows no wait state. While the
-            // turn runs T3 says "running" anyway, so the wait only matters once the turn ends. Shell commands or edits after
-            // the newest wait mean the agent went on working, and the wait is taken as done (seen live: the task finished
-            // inside the turn, no notification came, and a settled thread showed the wait). Other tool calls (linking a
-            // PR, a final message) do not end it.
-            if Self.isBackgroundWait(item) {
-                let clears = Self.isBackgroundWaitCleared(item)
-                s.backgroundWait = !clears; s.backgroundWaitAt = clears ? nil : (item.updatedAt ?? s.backgroundWaitAt)
-            }
-            else if item.type == "notification" { s.backgroundWait = false }   // the task finished and woke the agent
-            else if item.type == "command_execution" || item.type == "file_change" { s.backgroundWait = false }
-        }
+        for item in read.items.sorted(by: { $0.position < $1.position }) { Self.applyWait(item, to: &s) }
         s.steps.sort { $0.position < $1.position }
         if s.steps.count > 200 { s.steps.removeFirst(s.steps.count - 200) }
         s.lastPosition = max(s.lastPosition, read.items.map(\.position).max() ?? -1)
@@ -382,6 +374,46 @@ public struct HuddleState: Equatable, Sendable {
     public mutating func hide(_ threadId: String) { hiddenIDs.insert(threadId) }
 
     // MARK: Helpers
+
+    /// The background-wait rule, a function of the item stream alone so a cold read of the whole thread and incremental
+    /// polling agree. T3 keeps a thread in Working until the waited-on task exits, across later runs, and shows nothing
+    /// else; the MCP gives no task state, so this is a heuristic:
+    /// - A `t3_background_wait` call starts a wait, unless T3 matched none of its task ids. `"waiting": false` ends it.
+    /// - A task that exits after the turn ended wakes the agent with T3's own notification (`Command "…" finished`), which
+    ///   ends the wait. Other notifications (a watched PR's checks) start a run too, and do not end it.
+    /// - A task that exits inside the turn leaves no item. Shell commands or edits in the same run, from `waitPeek` after
+    ///   the wait on, are taken as the agent having moved on with the task done (seen live). Quicker ones are peeks at a
+    ///   task still running (also seen live), and work in a later run says nothing about the task.
+    static func applyWait(_ item: ActivityItem, to s: inout Session) {
+        if isBackgroundWait(item) {
+            if isBackgroundWaitCleared(item) { s.backgroundWait = false; s.backgroundWaitAt = nil; return }
+            guard !backgroundWaitMatchedNothing(item) else { return }
+            s.backgroundWait = true; s.backgroundWaitAt = item.updatedAt ?? s.backgroundWaitAt; s.backgroundWaitRun = item.runId
+        } else if item.type == "notification" {
+            if isTaskFinishedNotice(item) { s.backgroundWait = false }
+        } else if s.backgroundWait && (item.type == "command_execution" || item.type == "file_change") {
+            if let run = s.backgroundWaitRun, let other = item.runId, run != other { return }
+            if let at = s.backgroundWaitAt, let done = item.updatedAt,
+               HuddleState.date(done).timeIntervalSince(HuddleState.date(at)) < waitPeek { return }
+            s.backgroundWait = false
+        }
+    }
+
+    /// Work this soon after a wait is a peek at a task that is still running, not the agent moving on.
+    static let waitPeek: TimeInterval = 120
+
+    /// T3's answer `{"matched":[],"unmatched":[…]}`: none of the ids is a running task, so nothing is waited on. An answer
+    /// cut off before the output counts as a wait.
+    static func backgroundWaitMatchedNothing(_ item: ActivityItem) -> Bool {
+        (item.text ?? "").filter { !$0.isWhitespace && $0 != "\\" }.contains("{\"matched\":[]")
+    }
+
+    /// T3's notification that a background command exited (`Command "…" finished`), as opposed to a watched PR's
+    /// (`#420: checks failed`, item id `message:pr-watch:…`). Told apart by the item id, with the text as a fallback.
+    static func isTaskFinishedNotice(_ item: ActivityItem) -> Bool {
+        if item.itemId.contains("pr-watch") { return false }
+        return item.itemId.contains("message%3Athread%3A") || (item.text ?? "").hasPrefix("Command \"")
+    }
 
     /// `t3_background_wait` with `"waiting": false`: the agent cleared its wait.
     static func isBackgroundWaitCleared(_ item: ActivityItem) -> Bool {
