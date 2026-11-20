@@ -268,6 +268,69 @@ struct StoreTests {
                                                                type: "notification", status: "completed", text: "#8: checks passed")))
     }
 
+    // T3 0.1.11 reports a thread whose agent waits on a background task (or a PR watch) as `waiting`, with no pending
+    // request and the task in `pendingBackgroundTasks`. That is not an approval.
+    static func waitingRow(_ tasks: String?) throws -> ThreadSummary {
+        let field = tasks.map { ",\"pendingBackgroundTasks\":\($0)" } ?? ""
+        return try #require(ThreadSummary(json: try JSON.parse(Data("{\"threadId\":\"t\",\"status\":\"waiting\"\(field)}".utf8))))
+    }
+    static let awaited = "[{\"taskId\":\"b1\",\"kind\":\"command\",\"description\":\"x\",\"awaited\":true},{\"taskId\":\"b2\",\"kind\":\"command\",\"awaited\":false}]"
+
+    @Test func waitingOnABackgroundTaskIsNotAnApproval() throws {
+        let row = try Self.waitingRow(Self.awaited)
+        #expect(row.awaitedBackgroundTasks == 1)   // only awaited tasks count
+        var s = HuddleState()
+        s.applyActive([row])
+        s.applyRead(ThreadRead(threadId: "t", status: .waiting, pendingRequestCount: 0))
+        s.applyPending(threadId: "t", questions: [])
+        let t = try #require(s.sessions["t"])
+        #expect(t.permission == nil)
+        #expect(!t.needsAttention)
+        #expect(t.isWorking)
+        #expect(t.statusLine == "Waiting on a background task")
+    }
+
+    @Test func anApprovalWhileATaskIsAwaitedStillNeedsPermission() throws {
+        var s = HuddleState()
+        s.applyActive([try Self.waitingRow(Self.awaited)])
+        s.applyRead(ThreadRead(threadId: "t", status: .waiting, pendingRequestCount: 0, items: [
+            ActivityItem(position: 0, itemId: "turn-item:runtime-request:rq", type: "approval_request", status: "waiting",
+                         title: "Allow bash?", text: "{\"command\":\"pwd\"}")]))
+        s.applyPending(threadId: "t", questions: [])
+        #expect(s.sessions["t"]?.permission != nil)
+
+        var counted = HuddleState()   // no approval item, but T3 counts a pending request
+        counted.applyActive([try Self.waitingRow(Self.awaited)])
+        counted.applyRead(ThreadRead(threadId: "t", status: .waiting, pendingRequestCount: 1))
+        counted.applyPending(threadId: "t", questions: [])
+        #expect(counted.sessions["t"]?.permission != nil)
+    }
+
+    @Test func waitingWithoutTheFieldOrWithNoAwaitedTaskIsStillAnApproval() throws {
+        for tasks in [nil, "[]"] {
+            var s = HuddleState()
+            s.applyActive([try Self.waitingRow(tasks)])
+            s.applyRead(ThreadRead(threadId: "t", status: .waiting, pendingRequestCount: 0))
+            s.applyPending(threadId: "t", questions: [])
+            #expect(s.sessions["t"]?.permission != nil)
+            #expect(s.sessions["t"]?.statusLine == "needs permission")
+        }
+    }
+
+    @Test func t3sEmptyTaskListOverridesTheWaitHeuristic() throws {
+        var s = HuddleState()
+        s.applyActive([ThreadSummary(threadId: "t", status: .running)])
+        s.applyRead(ThreadRead(threadId: "t", status: .completed, items: [
+            ActivityItem(position: 0, itemId: "w", type: "dynamic_tool", status: "completed",
+                         text: "{\"toolName\":\"mcp__t3-code__t3_background_wait\",\"input\":{\"taskIds\":[\"b1\"]},\"output\":{\"structuredContent\":{\"matched\":[\"b1\"],\"unmatched\":[]}}}",
+                         updatedAt: HuddleStateTestClock.iso(Date()))]))
+        #expect(s.sessions["t"]?.isWorking == true)   // no field yet: the heuristic says waiting
+        s.applyActive([]); s.applyFinished([try #require(ThreadSummary(json: try JSON.parse(Data(
+            "{\"threadId\":\"t\",\"status\":\"completed\",\"pendingBackgroundTasks\":[]}".utf8))))], exhaustive: true)
+        #expect(s.sessions["t"]?.isWorking == false)  // T3 says nothing is awaited
+        #expect(s.sessions["t"]?.attention == .done)
+    }
+
     @Test func otherToolCallsAfterTheWaitDoNotEndIt() {
         let now = Date()
         var s = HuddleState()

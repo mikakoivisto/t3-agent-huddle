@@ -133,7 +133,8 @@ public enum DemoScenario {
             t.items.append(.init(position: 1, itemId: "item_bg", type: "dynamic_tool", status: "completed", title: "Wait for background task",
                                  text: "{\"toolName\":\"mcp__t3-code__t3_background_wait\",\"input\":{\"taskIds\":[\"bci8812\"]},"
                                      + "\"output\":{\"structuredContent\":{\"matched\":[\"bci8812\"],\"unmatched\":[]}}}"))
-            t.status = "completed"
+            // T3 0.1.11: the turn ended, the thread is `waiting` and lists the task it waits on.
+            t.status = "waiting"; t.awaitedTasks = ["bci8812"]
         }
         s.add(T(id: shardChild, title: "Shard 3 of 4", status: "running", parentThreadId: shards, runningFor: 30, projectId: "proj_app"))
         s.update(shards) { $0.status = "completed" }
@@ -144,6 +145,7 @@ public enum DemoScenario {
             t.items.append(.init(position: 2, itemId: "turn-item:message:message%3Athread%3Athr_ci%3Aordinal%3A1%3Anote", type: "notification",
                                  status: "completed", title: nil, text: "Command \"gh run watch 8812\" finished"))
             t.items.append(.init(position: 3, itemId: "item_msg", type: "assistant_message", status: "completed", title: nil, text: "CI is green on release/2.4."))
+            t.status = "completed"; t.awaitedTasks = []
         }
         s.update(shardChild) { $0.status = "completed" }
     }

@@ -58,12 +58,16 @@ public struct ThreadSummary: Equatable, Sendable {
     public var providerInstanceId: String?
     public var model: String?
     public var branch: String?
+    /// Background tasks the agent waits on (`pendingBackgroundTasks` with `awaited: true`). `nil` when T3 does not send
+    /// the field (before 0.1.11); 0.1.11 sends `[]` when nothing is pending.
+    public var awaitedBackgroundTasks: Int?
 
     public init(threadId: String, projectId: String = "", title: String = "", link: String? = nil,
                 status: T3Status, settled: Bool = false, snoozed: Bool = false,
                 parentThreadId: String? = nil, itemCount: Int = 0, updatedAt: String = "", environmentId: String? = nil,
-                providerInstanceId: String? = nil, model: String? = nil, branch: String? = nil) {
+                providerInstanceId: String? = nil, model: String? = nil, branch: String? = nil, awaitedBackgroundTasks: Int? = nil) {
         self.providerInstanceId = providerInstanceId; self.model = model; self.branch = branch
+        self.awaitedBackgroundTasks = awaitedBackgroundTasks
         self.threadId = threadId; self.projectId = projectId; self.title = title; self.link = link
         self.status = status; self.settled = settled; self.snoozed = snoozed
         self.parentThreadId = parentThreadId; self.itemCount = itemCount; self.updatedAt = updatedAt
@@ -104,7 +108,14 @@ public struct ThreadSummary: Equatable, Sendable {
             itemCount: j["itemCount"].int ?? 0,
             updatedAt: j["updatedAt"].string ?? "",
             environmentId: j["environmentId"].string ?? Self.environment(fromLink: link),
-            providerInstanceId: j["providerInstanceId"].string, model: j["model"].string, branch: j["branch"].string)
+            providerInstanceId: j["providerInstanceId"].string, model: j["model"].string, branch: j["branch"].string,
+            awaitedBackgroundTasks: Self.awaitedBackgroundTasks(j))
+    }
+
+    /// Only the count is kept: a task's `description` is agent text and is never shown.
+    public static func awaitedBackgroundTasks(_ j: JSON) -> Int? {
+        guard let tasks = j["pendingBackgroundTasks"].array else { return nil }
+        return tasks.filter { $0["awaited"].bool == true }.count
     }
 }
 
@@ -170,6 +181,8 @@ public struct ThreadRead: Equatable, Sendable {
     public var run: RunInfo?
     /// Settled, snoozed or archived in T3: a finished thread that says so leaves the huddle.
     public var putAway = false
+    /// As in `ThreadSummary`.
+    public var awaitedBackgroundTasks: Int?
 
     public init(threadId: String, status: T3Status, title: String? = nil, activeRunId: String? = nil,
                 pendingRequestCount: Int = 0, items: [ActivityItem] = [], hasMore: Bool = false, latestRunId: String? = nil,
@@ -195,6 +208,7 @@ public struct ThreadRead: Equatable, Sendable {
             runCount: t["runCount"].int,
             run: (j["recentRuns"].array ?? []).compactMap(RunInfo.init(json:)).max(by: { $0.ordinal < $1.ordinal }))
         putAway = t["settled"].bool == true || t["snoozed"].bool == true || t["archived"].bool == true
+        awaitedBackgroundTasks = ThreadSummary.awaitedBackgroundTasks(t)
     }
 }
 
