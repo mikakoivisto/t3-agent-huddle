@@ -50,6 +50,9 @@ public final class FakeT3Server: @unchecked Sendable {
         public var questions: [FakeQuestion] = []
         /// An approval: counts in `pendingRequestCount`, is NOT listed by `t3_pending_request list` (§5.4).
         public var permissionPending = false
+        /// Ids of background tasks the agent waits on (T3 0.1.11's `pendingBackgroundTasks`, all `awaited`). T3 then reports
+        /// the thread as `waiting` with no active run. `nil` omits the field, like T3 before 0.1.11.
+        public var awaitedTasks: [String]? = []
         public var updatedAt = FakeT3Server.iso(Date())
         public var environmentId = "env_local"
         public var latestRunId = "run_1"
@@ -457,6 +460,9 @@ public final class FakeT3Server: @unchecked Sendable {
             "itemCount": .number(Double(t.items.count)), "updatedAt": .string(t.updatedAt),
         ]
         if let p = t.parentThreadId { o["parentThreadId"] = .string(p); o["relationshipToParent"] = "subagent" }
+        if let tasks = t.awaitedTasks {
+            o["pendingBackgroundTasks"] = .array(tasks.map { .object(["taskId": .string($0), "kind": "command", "description": "Background task", "awaited": true]) })
+        }
         return .object(o)
     }
 
@@ -486,7 +492,8 @@ public final class FakeT3Server: @unchecked Sendable {
         let maxChars = args["maxCharsPerItem"].int ?? 400
         var thread = summary(t).object ?? [:]
         thread["pendingRequestCount"] = .number(Double(pendingCount(t)))
-        thread["activeRunId"] = t.status == "running" || t.status == "waiting" ? "run_1" : .null
+        let backgroundOnly = t.status == "waiting" && !(t.awaitedTasks ?? []).isEmpty && pendingCount(t) == 0
+        thread["activeRunId"] = (t.status == "running" || t.status == "waiting") && !backgroundOnly ? "run_1" : .null
         thread["runCount"] = 1
         thread["latestRunId"] = .string(t.latestRunId)
 

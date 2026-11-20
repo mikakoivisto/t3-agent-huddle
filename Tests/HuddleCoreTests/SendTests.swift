@@ -64,6 +64,7 @@ struct SendTests {
         let (s, m) = try await setUp(); defer { s.stop() }
         var f = try #require(m.state.sessions[Self.finished])
         f.backgroundWait = true; f.updatedAt = FakeT3Server.iso(Date())
+        f.awaitedBackgroundTasks = nil   // a T3 before 0.1.11: the wait comes from the heuristic, the status stays `completed`
         #expect(f.isWorking)
         #expect(m.sendLabel(f) == "Send" && !m.canSteer(f))
     }

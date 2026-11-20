@@ -74,6 +74,9 @@ public struct Session: Equatable, Sendable, Identifiable {
     public var backgroundWaitAt: String?
     /// The run the newest wait was registered in: only work in that same run can end it (see `applyRead`).
     public var backgroundWaitRun: String?
+    /// T3's own count of background tasks the agent waits on (0.1.11+, `nil` before). When present it decides the wait and
+    /// the stream heuristic above is not used. T3 then reports such a thread as `waiting`, which is not an approval.
+    public var awaitedBackgroundTasks: Int?
     /// Subagent (delegated task) threads of this thread that are still working. T3 reports the parent as `completed`
     /// while it waits for them, like it does for a background task.
     public var activeChildren = 0
@@ -114,9 +117,18 @@ public struct Session: Equatable, Sendable, Identifiable {
 
     /// Working now: T3 says active, or the agent is waiting on a background task it started (capped, so a task that was
     /// killed without a notification does not show as working forever).
-    public var isWorking: Bool {
-        t3Status.isActive || activeChildren > 0
-            || (backgroundWait && Date().timeIntervalSince(HuddleState.date(backgroundWaitAt ?? updatedAt)) < HuddleState.backgroundWaitCap)
+    public var isWorking: Bool { t3Status.isActive || activeChildren > 0 || waitsOnBackgroundTask }
+
+    /// T3's `pendingBackgroundTasks` when it sends it, else the heuristic from the run's items (capped).
+    public var waitsOnBackgroundTask: Bool {
+        if let n = awaitedBackgroundTasks { return n > 0 }
+        return backgroundWait && Date().timeIntervalSince(HuddleState.date(backgroundWaitAt ?? updatedAt)) < HuddleState.backgroundWaitCap
+    }
+
+    /// `waiting` only because of an awaited background task: T3 says so, and there is no sign of an approval
+    /// (no `approval_request` item, no pending request in the count). Only T3's field can say this, never the heuristic.
+    public var waitingOnlyOnBackgroundTask: Bool {
+        (awaitedBackgroundTasks ?? 0) > 0 && approvalText == nil && pendingRequestCount == 0
     }
 
     public var attention: Attention {
@@ -136,7 +148,7 @@ public struct Session: Equatable, Sendable, Identifiable {
         if secretPrompt != nil { return "asks for a secret" }
         if t3Status.isActive, let running = steps.last(where: { $0.state == .running }) { return running.label }   // a finished thread never shows a stale step
         if !t3Status.isActive && activeChildren > 0 { return activeChildren == 1 ? "Waiting on a subagent" : "Waiting on \(activeChildren) subagents" }
-        if isWorking && !t3Status.isActive { return "Waiting on a background task" }
+        if waitsOnBackgroundTask && (!t3Status.isActive || t3Status == .waiting) { return "Waiting on a background task" }
         return t3Status.words
     }
     public var doneStepCount: Int { steps.filter { $0.state == .done }.count }
@@ -282,7 +294,9 @@ public struct HuddleState: Equatable, Sendable {
         s.providerInstanceId = t.providerInstanceId ?? s.providerInstanceId; s.model = t.model ?? s.model; s.branch = t.branch ?? s.branch
         s.projectId = t.projectId; s.title = DisplayText.clean(t.title); s.link = t.link
         s.t3Status = t.status; s.updatedAt = t.updatedAt; s.itemCount = t.itemCount
+        s.awaitedBackgroundTasks = t.awaitedBackgroundTasks ?? s.awaitedBackgroundTasks
         if t.status.isActive == false && s.permission != nil && t.status != .waiting { s.permission = nil }
+        if s.waitingOnlyOnBackgroundTask { s.permission = nil }
         sessions[t.threadId] = s
     }
 
@@ -317,6 +331,7 @@ public struct HuddleState: Equatable, Sendable {
         // Settled (or snoozed, archived) and finished: gone from the huddle, like `applyFinished` does for listed threads.
         if read.putAway && !read.status.isActive { sessions[read.threadId] = nil; return }
         if read.status != .unknown { s.t3Status = read.status }
+        s.awaitedBackgroundTasks = read.awaitedBackgroundTasks ?? s.awaitedBackgroundTasks
         s.providerInstanceId = read.providerInstanceId ?? s.providerInstanceId; s.model = read.model ?? s.model
         s.branch = read.branch ?? s.branch; s.runCount = read.runCount ?? s.runCount
         if let r = read.run { s.runStartedAt = r.startedAt; s.runCompletedAt = r.completedAt; s.executedModel = r.executedModel }
@@ -349,13 +364,15 @@ public struct HuddleState: Equatable, Sendable {
     }
 
     /// Pending-request check for a thread that is `waiting` or has `pendingRequestCount > 0`.
-    /// Approvals are never listed (§5.4), so *waiting with no listed question* is inferred as a permission (Q2).
+    /// Approvals are never listed (§5.4), so *waiting with no listed question* is inferred as a permission (Q2), unless T3
+    /// says the thread waits only on a background task (`waitingOnlyOnBackgroundTask`).
     /// `listSucceeded == false` (tool error) means "unknown": never infer a permission from a failed list.
     public mutating func applyPending(threadId: String, questions: [Question], listSucceeded: Bool = true) {
         guard var s = sessions[threadId] else { return }
         let wasNeeding = s.needsAttention
         s.question = questions.first
-        if listSucceeded && questions.isEmpty && s.secretPrompt == nil && (s.t3Status == .waiting || s.pendingRequestCount > 0) {
+        if listSucceeded && questions.isEmpty && s.secretPrompt == nil && !s.waitingOnlyOnBackgroundTask
+            && (s.t3Status == .waiting || s.pendingRequestCount > 0) {
             s.permission = PermissionPrompt(summary: s.approvalText ?? Self.permissionSummary(steps: s.steps),
                                             requestId: s.approvalText != nil ? s.approvalRequestId : nil)
         } else {

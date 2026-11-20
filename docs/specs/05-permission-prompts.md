@@ -64,7 +64,7 @@ The command text comes from the newest `approval_request` activity item (preferr
 
 | ID | Statement | Tests | Evidence |
 |---|---|---|---|
-| PRM-01 | A waiting thread with no listed question is a permission, with the exact tool and command from its approval item | `StoreTests.permissionInferredWhenWaitingWithNoListedQuestion`; `RunInfoTests.theApprovalItemGivesTheExactCommandAndIsNotAStep`; `ModelTests.questionAndPermissionDetected` | Fake (item shape Live) |
+| PRM-01 | A waiting thread with no listed question is a permission (not when T3 0.1.11 lists an awaited background task and there is no approval item or pending request: spec 02), with the exact tool and command from its approval item | `StoreTests.permissionInferredWhenWaitingWithNoListedQuestion`; `RunInfoTests.theApprovalItemGivesTheExactCommandAndIsNotAStep`; `ModelTests.questionAndPermissionDetected` | Fake (item shape Live) |
 | PRM-02 | The approval item is a prompt, not a step, and wins over an unfinished command | `RunInfoTests.theApprovalItemGivesTheExactCommandAndIsNotAStep` | Fake |
 | PRM-03 | The summary splits into tool badge and command; raw JSON has no tool | `RunInfoTests.permissionPromptSplitsToolAndDetail` | Fake |
 | PRM-04 | A permission resolved in T3 Code clears the flag on the next poll | `ModelTests.permissionResolvedElsewhereClearsFlag` | Fake |

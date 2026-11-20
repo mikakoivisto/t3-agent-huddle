@@ -63,5 +63,5 @@ Sources/FakeT3       loopback HTTP server + fake T3 tools + synthetic scenarios 
 Sources/AgentHuddle  SwiftUI views, NSPanel, menu-bar item, Settings window, About, snapshot + demo recorder
 Sources/fake-t3      standalone fake server
 Sources/huddle-probe live-check tool (scripts/live-check.sh)
-Tests/               308 tests, §11 layers
+Tests/               312 tests, §11 layers
 ```

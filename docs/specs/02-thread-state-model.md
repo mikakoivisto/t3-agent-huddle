@@ -1,11 +1,12 @@
 # 02 — Thread state model
 
-**Status:** built · **Evidence:** reducer rules fully unit-tested; T3 status values, list and activity shapes seen live; "waiting on a background task" and "waiting on a subagent" are **inferences from item patterns** and have no official T3 signal.
+**Status:** built · **Evidence:** reducer rules fully unit-tested; T3 status values, list and activity shapes seen live; "waiting on a background task" comes from T3's `pendingBackgroundTasks` field (T3 0.1.11 and later) and is an **inference from item patterns** before that; "waiting on a subagent" is an inference with no official T3 signal.
 
 ## Purpose and user value
 
 - **Show what is alive:** the panel lists working threads and recently finished ones, not the backlog (a real T3 holds hundreds of finished or idle threads).
-- **Don't call a thread "Done" while it is not:** T3 reports `completed` for a thread that is waiting on a background task or its own subagents.
+- **Don't call a thread "Done" while it is not:** T3 reports `completed` for a thread that is waiting on its own subagents, and (before 0.1.11) on a background task.
+- **Don't ask for an approval that does not exist:** T3 0.1.11 reports `waiting` for a thread that waits on a background task or a watched PR.
 
 ## Behaviour as built
 
@@ -48,17 +49,25 @@ A finished row stays until it is settled, snoozed or archived in T3 (seen in a l
 
 - T3 status is active;
 - one or more of its **subagents** is active (`activeChildren > 0`, no time cap);
-- it is **waiting on a background task** and the thread's `updatedAt` is under **2 hours** old.
+- it is **waiting on a background task**: T3 lists one (below), or, on a T3 that does not send the field, the inference below says so and the wait is under **2 hours** old.
 
-### Waiting on a background task (inference)
+### Waiting on a background task (T3 0.1.11 and later)
+
+- **T3's field decides.** Every list row and read carries `pendingBackgroundTasks`, an array of `{taskId, kind, description, awaited}` (`[]` when nothing is pending; seen live, 2026-11-21). `kind` is `command` for a background command and `monitor` for a watched PR (`taskId` `pull-request-watch:github.com/<repo>#<n>`). The panel keeps only the count of `awaited: true` entries; `description` is agent text and is not stored or shown.
+- **A count above zero:** the thread is working and, unless a question or permission comes first, the status line is "Waiting on a background task" (also for a PR watch). T3 reports such a thread as `waiting` with no active run and `pendingRequestCount: 0`.
+- **Not an approval:** `waiting` with no listed question is normally inferred as a permission (spec 05). It is not when T3 lists an awaited task and there is no sign of an approval: no `approval_request` item and `pendingRequestCount` 0. Either sign keeps the permission. Only T3's field can lift the inference, never the item-pattern rule below.
+- **A count of zero** overrides the item-pattern rule: the wait has ended, whatever the items say.
+- **The field missing** (T3 before 0.1.11): the inference below is used.
+
+### Waiting on a background task (inference, T3 before 0.1.11)
 
 - **Starts:** an activity item of type `dynamic_tool` whose text, whitespace removed, contains `"toolName":"mcp__t3-code__t3_background_wait"` or `"toolName":"t3_background_wait"`. A tool search that merely mentions the name is not a wait. T3 answers `{"matched":[…],"unmatched":[…]}` (seen live); a call that matched no task (`"matched":[]`: the task already ended or never existed) neither starts nor ends a wait. A call whose answer is cut off counts as a wait.
-- **The wait does not block.** `t3_background_wait` returns at once, so the agent can go on working while the task runs, and T3 exposes no wait state (checked live: nothing in the thread's or the list's fields). T3 keeps the thread in Working until the task exits, **across later runs**: seen live, a watched PR's notice started a new run that ran commands and ended, and T3 still showed Working. The rule is a function of the item stream alone, so a cold read of the whole thread and polling agree.
+- **The wait does not block.** `t3_background_wait` returns at once, so the agent can go on working while the task runs, and T3 before 0.1.11 exposed no wait state (checked live on 2026-11-19: nothing in the thread's or the list's fields). T3 keeps the thread in Working until the task exits, **across later runs**: seen live, a watched PR's notice started a new run that ran commands and ended, and T3 still showed Working. The rule is a function of the item stream alone, so a cold read of the whole thread and polling agree.
 - **Ends:**
   - **T3's notice that the command exited:** a `notification` item with an item id of the form `message:thread:<thread>:…` and the text `Command "<the command's description, or the command cut at about 80 characters>" finished` (both seen live). The id is what counts; the text is a fallback. It starts the run that wakes the agent. Other notifications do not end a wait: a watched PR's (`#420: checks failed`, item id `message:pr-watch:…`) starts a run too, while the task still runs.
   - **A wait call with `"waiting": false`.**
   - **Shell work or edits in the same run, 2 minutes or more after the wait:** a `command_execution` or `file_change` item from the wait's run whose `updatedAt` is at least 2 minutes after the wait's. A task that exits inside the turn leaves no item (seen live), and an agent that goes on working for minutes has usually seen it finish. Quicker work is a peek at a task still running (seen live: `sleep 20; grep … log` 26 seconds after the wait, then the turn ended). Work in a later run says nothing about the task. Other tool calls (linking a PR, a final message) never end it.
-- **Known gaps (heuristic):** an agent that keeps working for over 2 minutes after a wait and ends its turn while the task still runs shows "Done" while T3 shows Working, until the task exits and T3's notice starts a new run. A task that exits inside a *later* run (no notice, no item) keeps the row "Waiting" until the cap. T3 would need to expose its wait state to fix both (STM-Q1).
+- **Known gaps (heuristic):** an agent that keeps working for over 2 minutes after a wait and ends its turn while the task still runs shows "Done" while T3 shows Working, until the task exits and T3's notice starts a new run. A task that exits inside a *later* run (no notice, no item) keeps the row "Waiting" until the cap. T3 0.1.11's `pendingBackgroundTasks` fixes both (above).
 - **Cap:** 2 hours from the newest wait call (its item's `updatedAt`; the thread's own `updatedAt` only if the item has none), so a task killed without notification stops counting and a settle does not restart the clock.
 
 ### Waiting on a subagent (inference)
@@ -109,6 +118,7 @@ A thread is re-read only when `status`, `updatedAt` or `itemCount` changed, when
 | Activity items | types `user_message, assistant_message, command_execution, dynamic_tool, reasoning`; `approval_request` seen on a waiting `pi` thread; `notification` and `error` items are **assumed** | Live for the first six; `notification`, `error`: None |
 | Background wait item | `dynamic_tool` with `toolName` and `input.taskIds` in its JSON text, answer `{"matched":[…],"unmatched":[…]}` | Live (two threads, 2026-11-16 and 2026-11-19); tests use synthetic items of the same shape |
 | Wait across the turn end (live check, 2026-11-19) | A throwaway thread ran `sleep 240` in the background, waited on it, peeked with `sleep 20` and ended its turn. With the turn over and the timer running, `main` showed "Done" and this rule "Waiting on a background task" (`scripts/live-check.sh --huddle`, the real `HuddleModel`). When the timer ended, T3's notice started a new run and both showed "Done" | Live |
+| `pendingBackgroundTasks` (T3 0.1.11, 2026-11-21) | On every list row and read; `[]` on threads with nothing pending. Three `waiting` threads, each with `pendingRequestCount: 0`, no active run and an empty pending list: one awaited a command (`kind: "command"`), two a PR watch (`kind: "monitor"`). v0.2.2 showed the two PR-watch threads as "needs permission"; this rule shows "Waiting on a background task" (`scripts/live-check.sh --huddle`, the real `HuddleModel`). A real approval on a thread that also awaits a task was not observed | Live |
 | Task-exit and PR notices | `notification`: `Command "…" finished` (id `message:thread:…`) and `#N: checks failed` (id `message:pr-watch:…`) | Live (2026-11-16 and 2026-11-19) |
 
 ## Security and privacy
@@ -127,6 +137,7 @@ A thread is re-read only when `status`, `updatedAt` or `itemCount` changed, when
 | STM-05 | A finished thread stays until settled, then leaves; finished rows older than 30 minutes are not admitted; settled ones never are | `StoreTests.finishedSessionsStayUntilSettledThenLeave`; `StoreTests.finishedRowsAreNeverNewlyAdmitted`; `StoreTests.recentlyFinishedThreadIsAdmittedButOldOnesAreNot` | Fake |
 | STM-06 | The finished refresh is one page of 25 with no cursor, and an old backlog is never admitted | `HardeningTests.finishedRefreshIsOnePageWithNoCursorChasing` | Fake |
 | STM-07 | A completed thread waiting on `t3_background_wait` counts as working and shows "Waiting on a background task" until T3's command notice arrives; a quick peek, a PR notice or a later run does not end it, and a cold read agrees with polling; a call that matched no task is not a wait; shell work 2 minutes after the wait in the same run ends it; a mention of the tool in a search is not a wait; a wait older than 2 hours stops counting | `StoreTests.waitingOnABackgroundTaskCountsAsWorkingEvenThoughT3SaysCompleted`; `StoreTests.aWaitOutlivesAQuickPeekAPRNoticeAndALaterRun`; `StoreTests.aWaitThatMatchedNoTaskNeitherStartsNorEndsAWait`; `StoreTests.onlyT3sCommandNoticeEndsAWait`; `StoreTests.aWaitFollowedByMoreShellWorkIsTakenAsDone`; `StoreTests.aToolSearchMentioningBackgroundWaitIsNotAWait`; `StoreTests.staleBackgroundWaitStopsCountingAsWorking` | Fake (shapes from live) |
+| STM-07a | T3's `pendingBackgroundTasks` decides the wait when present: an awaited task on a `waiting` thread with no approval sign is "Waiting on a background task", not a permission; an approval item or a pending request count keeps the permission; without the field, or with no awaited task, `waiting` is still a permission; an empty list ends a wait the item pattern still sees | `StoreTests.waitingOnABackgroundTaskIsNotAnApproval`; `StoreTests.anApprovalWhileATaskIsAwaitedStillNeedsPermission`; `StoreTests.waitingWithoutTheFieldOrWithNoAwaitedTaskIsStillAnApproval`; `StoreTests.t3sEmptyTaskListOverridesTheWaitHeuristic` | Fake (shape from live) |
 | STM-07b | A wait ends when the agent goes on with shell work or edits, or clears it (`waiting: false`), not on other tool calls; the cap counts from the wait; a settled finished row leaves on its own read, also behind a partial finished page | `StoreTests.aWaitFollowedByMoreShellWorkIsTakenAsDone`; `StoreTests.otherToolCallsAfterTheWaitDoNotEndIt`; `StoreTests.theWaitCapCountsFromTheWaitNotFromASettle`; `StoreTests.aSettledThreadLeavesWhenItsReadSaysSo`; `SettledBehindAFullPageTests.aSettledRowLeavesEvenWhenTheFinishedListIsPartial` | Fake; both cases seen live |
 | STM-07c | A done row comes back after a restart until closed; a closed row stays closed; a settled or deleted one is forgotten; only ids are stored | `KeptAcrossRestartsTests` | Fake |
 | STM-08 | A completed parent with active subagents counts as working and shows "Waiting on a subagent" / "Waiting on 2 subagents"; the child is not a row; it returns to "Done" when the children finish | `RunInfoTests.aWorkingSubagentKeepsACompletedParentWorking` | Fake |
@@ -140,7 +151,8 @@ A thread is re-read only when `status`, `updatedAt` or `itemCount` changed, when
 
 ## Open questions
 
-- **STM-Q1:** is there an official T3 signal for "waiting on a background task" or "waiting on a subagent"? Today both are patterns that T3 can change.
+- **STM-Q1:** is there an official T3 signal for "waiting on a subagent"? `blockedOnThreadWait` (seen live, always `false` so far) may be it; not used until seen `true`. The background-task wait has one since 0.1.11 (`pendingBackgroundTasks`).
+- **STM-Q4:** a watched PR reads "Waiting on a background task". Should it say something PR-specific? A new label is new UI, so it waits for the owner.
 - **STM-Q2:** `notification` and `error` item shapes were never captured live. Confirm against real items.
 - **STM-Q3:** the 30-minute recent window and 2-hour cap are defaults chosen by the prototype (SPEC Q12 proposed "only threads seen running"). Owner to confirm.
 - **STM-Q4:** archived threads: the code has no explicit archived check; they are assumed absent from the unsettled finished page. Not verified.
