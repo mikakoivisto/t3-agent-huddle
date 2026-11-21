@@ -1,6 +1,6 @@
 # 05 — Permission prompts and jump to T3 Code
 
-**Status:** built · **Evidence:** the `approval_request` item shape was seen live (on a `pi` thread, T3 Code 0.1.9); the panel, detection and jump run only against the fake. The jump was handed to macOS but its landing on the right thread was **not observed**.
+**Status:** built · **Evidence:** the `approval_request` item shape was seen live (on a `pi` thread, T3 Code 0.1.9, and on a Claude and a Codex thread, T3 Code 0.1.11); the panel, detection and jump run only against the fake. The jump was handed to macOS but its landing on the right thread was **not observed**.
 
 ## Purpose and user value
 
@@ -11,10 +11,15 @@
 
 ### Detection
 
-A thread is a permission when all hold:
+A thread is a permission only on **positive evidence of an approval**. All of these hold:
 
-- its status is `waiting` or `pendingRequestCount` is above 0;
-- `t3_pending_request list` succeeded and returned no user questions (approvals are never listed there).
+- the thread is active (not `completed`, `interrupted`, `failed` or another finished status);
+- `t3_pending_request list` succeeded and returned no user questions (approvals are never listed there), and no secret request is open;
+- **evidence:** `pendingRequestCount` (from `t3_thread_read`; list rows do not carry it) is above 0, **or** the newest `approval_request` item of the latest run is still pending (`waiting`).
+
+`waiting` alone is **not** evidence. T3 0.1.11 reports `waiting` for background commands, watched PRs and subagents (spec 02), and a live approval is `running`, not `waiting`. A `waiting` thread with no evidence is shown as "Waiting", without the lime outline or chime. (Before 2026-11-21 the rule was "`waiting` and no listed question", from the prototype spec §5.4; each new kind of wait then showed as a false permission.)
+
+A finished thread is never a permission: after an interrupt, a Codex thread kept `pendingRequestCount: 1` and its approval item `waiting` (live, 2026-11-21), a request nobody can decide any more.
 
 The command text comes from the newest `approval_request` activity item (preferred). If none exists it falls back to the newest unfinished command step as `Bash: <command>`.
 
@@ -47,7 +52,9 @@ The command text comes from the newest `approval_request` activity item (preferr
 
 | What | Detail | Evidence |
 |---|---|---|
-| Approval item | activity item `{type:"approval_request", status:"waiting", title:"Allow bash?", text:"{\n  \"command\": \"pwd\"\n}"}`; `t3_pending_request list` → `{requestIds:[]}`; thread `pendingRequestCount:1` | **Live** (one `pi` thread) |
+| Approval item | activity item `{type:"approval_request", status:"waiting", title:"Allow bash?", text:"{\n  \"command\": \"pwd\"\n}"}`; `t3_pending_request list` → `{requestIds:[]}`; thread `pendingRequestCount:1` | **Live** (one `pi` thread, T3 0.1.9) |
+| Approval on Claude and Codex (T3 0.1.11) | thread `status: "running"` (not `waiting`), `activeRunId` set, `pendingRequestCount: 1` on the read (list rows have no count), `pendingBackgroundTasks: []`; item `{type:"approval_request", status:"waiting", title:null, text:"touch huddle-approval-check.txt"}` (Codex: `"/bin/zsh -lc 'touch …'"`), plain text, not JSON; `t3_pending_request list` → `{requestIds:[]}` | **Live** (two throwaway approval-required threads, 2026-11-21) |
+| After an interrupt | Claude: item `cancelled`, count 0. Codex: item still `waiting`, count still 1 on an `interrupted` (later archived) thread | **Live** (2026-11-21) |
 | Status values on the approval item | `waiting` while pending, `completed` after a decision, `cancelled` after an interrupt | Live |
 | Item id | `turn-item:runtime-request:<encodeURIComponent(requestId)>` | Live (used by specs 06, 07) |
 | Other providers | Claude, Codex, ACP use the same projection in T3's code | None (only `pi` run) |
@@ -64,7 +71,7 @@ The command text comes from the newest `approval_request` activity item (preferr
 
 | ID | Statement | Tests | Evidence |
 |---|---|---|---|
-| PRM-01 | A waiting thread with no listed question is a permission (not when T3 0.1.11 lists an awaited background task and there is no approval item or pending request: spec 02), with the exact tool and command from its approval item | `StoreTests.permissionInferredWhenWaitingWithNoListedQuestion`; `RunInfoTests.theApprovalItemGivesTheExactCommandAndIsNotAStep`; `ModelTests.questionAndPermissionDetected` | Fake (item shape Live) |
+| PRM-01 | An active thread with a pending request count or a pending approval item, and no listed question, is a permission, with the exact tool and command from its approval item; `waiting` with neither is not; a finished thread never is (stale Codex count) | `StoreTests.permissionInferredWhenWaitingWithNoListedQuestion`; `StoreTests.permissionNeedsEvidenceNotJustWaiting`; `RunInfoTests.theApprovalItemGivesTheExactCommandAndIsNotAStep`; `ModelTests.questionAndPermissionDetected` | Fake (item shape Live) |
 | PRM-02 | The approval item is a prompt, not a step, and wins over an unfinished command | `RunInfoTests.theApprovalItemGivesTheExactCommandAndIsNotAStep` | Fake |
 | PRM-03 | The summary splits into tool badge and command; raw JSON has no tool | `RunInfoTests.permissionPromptSplitsToolAndDetail` | Fake |
 | PRM-04 | A permission resolved in T3 Code clears the flag on the next poll | `ModelTests.permissionResolvedElsewhereClearsFlag` | Fake |
@@ -74,7 +81,7 @@ The command text comes from the newest `approval_request` activity item (preferr
 | PRM-08 | Deep links form from a hosted link, a `t3-thread://` link, a markdown link (including parentheses in the title) and from environment plus id (colons encoded); no link, no environment gives none | `DeepLinkTests` (`fromHostedLinkKeepsT3sEncoding`, `fromThreadLinkScheme`, `fromAMarkdownLinkAsLinkedMachinesReturnThem`, `threadSummaryStoresABareLinkAndEnvironmentFromAMarkdownLink`, `remoteSessionJumpsToACleanDeepLink`, `fallbackFromEnvironmentAndIdEncodesColons`, `noLinkNoEnvironmentMeansNoDeepLink`); `LiveShapeTests.environmentIdParsedFromBothLinkFormats` | Fake; markdown shape Live |
 | PRM-09 | The panel collapses a long command to 3 lines with a Show full command toggle; the badge shows the tool | none (view code only; stills in `--snapshot` `03-permission`) | **None** |
 | PRM-10 | `NSWorkspace.open` lands on the right thread in T3 Code | none | **None** (README: screen was locked) |
-| PRM-11 | A permission on Claude, Codex or ACP threads is detected and shows its command | none | **None** |
+| PRM-11 | A permission on Claude or Codex threads is detected and shows its command (the shape, not the panel, was seen live; ACP not checked) | `StoreTests.permissionNeedsEvidenceNotJustWaiting` (live shapes) | Fake (shape Live, 2026-11-21) |
 
 ## Open questions
 
@@ -82,6 +89,8 @@ The command text comes from the newest `approval_request` activity item (preferr
 - **PRM-Q2:** README and SPEC call the button "In T3 Code"; the app labels it **Review in T3 Code** (`Views.swift:286`). Which is the intended name? Docs should follow the code.
 - **PRM-Q3:** README "Permission detection is an inference … Unproven live" is stale: detection prefers the `approval_request` item (live-seen shape), and falls back to the inference only when no item exists. Update README after owner agreement.
 - **PRM-Q4:** T3 has no MCP approve option; if it adds one, the opt-in inline approvals could be retired.
+- **PRM-Q5:** T3 0.1.11 keeps a Codex thread's `pendingRequestCount` and approval item after an interrupt. If a later run inherited that stale count, the thread would show a false permission. Not observed; the panel ignores it only while the thread is finished.
+- **PRM-Q6:** On 0.1.11 approval items have no title, so the badge always says "Tool", and plain text of 400 characters or fewer is approvable inline for any tool. Whether that text is the whole request for tools other than a shell command (an edit, for example) is unverified.
 
 ## Sources
 

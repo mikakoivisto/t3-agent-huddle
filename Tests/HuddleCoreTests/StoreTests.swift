@@ -290,6 +290,40 @@ struct StoreTests {
         #expect(t.statusLine == "Waiting on a background task")
     }
 
+    /// Live shape (T3 0.1.11, 2026-11-21): a `subagent` entry has a `childThreadId` and no `awaited` field. The thread is
+    /// `waiting`, no active run, `pendingRequestCount: 0`. v0.2.4 showed it as "needs permission".
+    static let subagent = "[{\"taskId\":\"a1\",\"kind\":\"subagent\",\"description\":\"x\",\"childThreadId\":\"thread:subagent:c1\"}]"
+
+    @Test func waitingOnASubagentIsNotAnApproval() throws {
+        let row = try Self.waitingRow(Self.subagent)
+        #expect(row.awaitedBackgroundTasks == 1)
+        #expect(row.awaitedSubagents == 1)
+        var s = HuddleState()
+        s.applyActive([row])
+        s.applyRead(ThreadRead(threadId: "t", status: .waiting, pendingRequestCount: 0))
+        s.applyPending(threadId: "t", questions: [])
+        let t = try #require(s.sessions["t"])
+        #expect(t.permission == nil)
+        #expect(!t.needsAttention)
+        #expect(t.isWorking)
+        #expect(t.statusLine == "Waiting on a subagent")
+
+        // A subagent and a command together: the task label covers both.
+        let mixed = "[" + Self.subagent.dropFirst().dropLast() + ",{\"taskId\":\"b1\",\"kind\":\"command\",\"awaited\":true}]"
+        var m = HuddleState()
+        m.applyActive([try Self.waitingRow(mixed)])
+        m.applyRead(ThreadRead(threadId: "t", status: .waiting, pendingRequestCount: 0))
+        m.applyPending(threadId: "t", questions: [])
+        #expect(m.sessions["t"]?.permission == nil)
+        #expect(m.sessions["t"]?.statusLine == "Waiting on a background task")
+
+        // Two subagents.
+        let two = "[" + Self.subagent.dropFirst().dropLast() + "," + Self.subagent.dropFirst().dropLast() + "]"
+        var d = HuddleState()
+        d.applyActive([try Self.waitingRow(two)])
+        #expect(d.sessions["t"]?.statusLine == "Waiting on 2 subagents")
+    }
+
     @Test func anApprovalWhileATaskIsAwaitedStillNeedsPermission() throws {
         var s = HuddleState()
         s.applyActive([try Self.waitingRow(Self.awaited)])
@@ -306,15 +340,50 @@ struct StoreTests {
         #expect(counted.sessions["t"]?.permission != nil)
     }
 
-    @Test func waitingWithoutTheFieldOrWithNoAwaitedTaskIsStillAnApproval() throws {
+    /// A bare `waiting` (no count, no pending approval item) is not a permission, with or without T3's task list.
+    @Test func aBareWaitingWithoutEvidenceIsNotAnApproval() throws {
         for tasks in [nil, "[]"] {
             var s = HuddleState()
             s.applyActive([try Self.waitingRow(tasks)])
             s.applyRead(ThreadRead(threadId: "t", status: .waiting, pendingRequestCount: 0))
             s.applyPending(threadId: "t", questions: [])
-            #expect(s.sessions["t"]?.permission != nil)
-            #expect(s.sessions["t"]?.statusLine == "needs permission")
+            #expect(s.sessions["t"]?.permission == nil)
+            #expect(s.sessions["t"]?.needsAttention == false)
+            #expect(s.sessions["t"]?.statusLine == "Waiting")
         }
+    }
+
+    /// Live shapes (T3 0.1.11, 2026-11-21, a Claude and a Codex thread in approval-required mode): an approval is `running`
+    /// with an active run and `pendingRequestCount: 1`; the item has no title and plain text, not JSON.
+    @Test func permissionNeedsEvidenceNotJustWaiting() throws {
+        func liveApproval(_ text: String, status: String = "waiting") -> ActivityItem {
+            ActivityItem(position: 4, itemId: "turn-item:runtime-request:rq1", type: "approval_request", status: status, title: nil, text: text)
+        }
+        func state(_ t3: T3Status, count: Int, items: [ActivityItem], tasks: String = "[]") throws -> Session? {
+            var s = HuddleState()
+            s.applyActive([try #require(ThreadSummary(json: try JSON.parse(Data(
+                "{\"threadId\":\"t\",\"status\":\"\(t3.rawValue)\",\"pendingBackgroundTasks\":\(tasks)}".utf8))))])
+            s.applyRead(ThreadRead(threadId: "t", status: t3, activeRunId: t3.isActive ? "r1" : nil, pendingRequestCount: count, items: items))
+            s.applyPending(threadId: "t", questions: [])
+            return s.sessions["t"]
+        }
+        // Claude and Codex: a permission, with the command, approvable inline.
+        for text in ["touch huddle-approval-check.txt", "/bin/zsh -lc 'touch huddle-approval-check.txt'"] {
+            let t = try #require(try state(.running, count: 1, items: [liveApproval(text)]))
+            #expect(t.permission?.summary == "Tool: \(text)")
+            #expect(t.permission?.requestId == "rq1")
+            #expect(t.statusLine == "needs permission")
+        }
+        // Codex after an interrupt keeps the count and a `waiting` item: a finished thread is never a permission.
+        #expect(try state(.interrupted, count: 1, items: [liveApproval("touch x")])?.permission == nil)
+        // An approval decided earlier in the run, then a wait on a subagent: not a permission.
+        let decided = try #require(try state(.waiting, count: 0, items: [liveApproval("touch x", status: "completed")], tasks: Self.subagent))
+        #expect(decided.permission == nil)
+        #expect(decided.statusLine == "Waiting on a subagent")
+        // A count with no item: still a permission, the command unknown.
+        let bare = try #require(try state(.running, count: 1, items: []))
+        #expect(bare.permission != nil)
+        #expect(bare.permission?.requestId == nil)
     }
 
     @Test func t3sEmptyTaskListOverridesTheWaitHeuristic() throws {
