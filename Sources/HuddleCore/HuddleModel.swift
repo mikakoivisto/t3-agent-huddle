@@ -442,7 +442,7 @@ public final class HuddleModel: ObservableObject {
 
     private func checkPending(id: String) async throws {
         guard let s = state.sessions[id] else { return }
-        guard s.t3Status == .waiting || s.pendingRequestCount > 0 else {
+        guard s.t3Status == .waiting || s.pendingRequestCount > 0 || s.approvalPending else {
             if s.question != nil || s.permission != nil { state.clearPending(threadId: id) }
             return
         }

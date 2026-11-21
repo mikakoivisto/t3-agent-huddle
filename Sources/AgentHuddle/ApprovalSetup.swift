@@ -13,6 +13,12 @@ struct ApprovalButtons: View {
     var commandVisibleInFull = false
     /// The request has been on screen for `ApprovalGate.armDelay` (always true in snapshots).
     var armed = false
+    /// "Review in T3 Code": on the same line as Allow and Deny when they are shown, else on its own line under the note.
+    var review: () -> Void
+
+    private var reviewButton: some View {
+        Button(action: review) { Pill(text: "Review in T3 Code", fill: Theme.lime) }.buttonStyle(.plain)
+    }
 
     var body: some View {
         if model.showsApprovalControls(for: session), let prompt = session.permission {
@@ -29,6 +35,8 @@ struct ApprovalButtons: View {
                         Button { decide(.decline, requestId, prompt.summary) } label: { Pill(text: "Deny", fill: Theme.red, fg: .white) }
                             .buttonStyle(.plain)
                             .disabled(!denyOK).opacity(denyOK ? 1 : 0.4)
+                        Spacer(minLength: 8)
+                        reviewButton
                     }
                     if model.readOnly { note("Read-only mode — decide in T3 Code") }
                     else if !commandVisibleInFull { note("Show the full command to enable Allow.") }
@@ -40,7 +48,10 @@ struct ApprovalButtons: View {
                 if case .error(let msg) = ui {
                     Text(verbatim: msg).font(.system(size: 12)).foregroundStyle(Theme.red).lineLimit(3)
                 }
+                if !(model.canDecideInline(session) && prompt.requestId != nil) { reviewButton.padding(.top, 4) }
             }
+        } else {
+            reviewButton
         }
     }
 

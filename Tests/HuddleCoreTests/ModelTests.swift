@@ -64,7 +64,7 @@ struct ModelTests {
         let m = makeModel(s)
         await m.refresh()
         #expect(m.state.sessions[Scenario.permissionThread]?.permission != nil)
-        s.update(Scenario.permissionThread) { $0.permissionPending = false; $0.status = "running" }   // approved in T3
+        s.update(Scenario.permissionThread) { $0.permissionPending = false; $0.status = "running"; $0.items[2].status = "completed" }   // approved in T3 (live: the item turns `completed`)
         await m.refresh()
         #expect(m.state.sessions[Scenario.permissionThread]?.permission == nil)
         #expect(m.state.sessions[Scenario.permissionThread]?.statusLine != "needs permission")

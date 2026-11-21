@@ -39,7 +39,7 @@ T3's MCP surface cannot decide an approval (`t3_pending_request` handles user qu
 
 ### What the panel shows
 
-- **Permission panel, thread on this Mac, approvals on:** **Allow** (white) and **Deny** (red) under the command, above **Review in T3 Code**. Neither is a default button.
+- **Permission panel, thread on this Mac, approvals on:** **Allow** (white) and **Deny** (red) under the command, with **Review in T3 Code** at the end of the same line; notes and errors go under that line. Neither is a default button. Without Allow / Deny (not set up, not approvable, or a machine with no credential) Review in T3 Code is on its own line under the note.
 - **Disabled and dimmed** in Read-only mode (with the note "Read-only mode — decide in T3 Code") and while a decision is in flight ("Sending…").
 - **Not approvable request:** the note "This request can't be approved here — decide in T3 Code". Review in T3 Code still works.
 - **Error:** T3's sentence or ours under the buttons (first 160 characters).

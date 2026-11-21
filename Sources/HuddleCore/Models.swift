@@ -58,9 +58,12 @@ public struct ThreadSummary: Equatable, Sendable {
     public var providerInstanceId: String?
     public var model: String?
     public var branch: String?
-    /// Background tasks the agent waits on (`pendingBackgroundTasks` with `awaited: true`). `nil` when T3 does not send
-    /// the field (before 0.1.11); 0.1.11 sends `[]` when nothing is pending.
+    /// Background tasks the agent waits on: `pendingBackgroundTasks` entries not marked `awaited: false` (a `subagent`
+    /// entry has no `awaited` field). `nil` when T3 does not send the field (before 0.1.11); 0.1.11 sends `[]` when
+    /// nothing is pending.
     public var awaitedBackgroundTasks: Int?
+    /// How many of those are `kind: "subagent"` (a delegated task the agent waits on).
+    public var awaitedSubagents: Int?
 
     public init(threadId: String, projectId: String = "", title: String = "", link: String? = nil,
                 status: T3Status, settled: Bool = false, snoozed: Bool = false,
@@ -110,12 +113,19 @@ public struct ThreadSummary: Equatable, Sendable {
             environmentId: j["environmentId"].string ?? Self.environment(fromLink: link),
             providerInstanceId: j["providerInstanceId"].string, model: j["model"].string, branch: j["branch"].string,
             awaitedBackgroundTasks: Self.awaitedBackgroundTasks(j))
+        awaitedSubagents = Self.awaitedSubagents(j)
     }
 
-    /// Only the count is kept: a task's `description` is agent text and is never shown.
+    /// Only counts are kept: a task's `description` is agent text and is never shown. An entry counts unless it says
+    /// `awaited: false`: `command` and `monitor` entries carry `awaited`, `subagent` entries do not (seen live, T3 0.1.11).
     public static func awaitedBackgroundTasks(_ j: JSON) -> Int? {
-        guard let tasks = j["pendingBackgroundTasks"].array else { return nil }
-        return tasks.filter { $0["awaited"].bool == true }.count
+        awaitedEntries(j)?.count
+    }
+    public static func awaitedSubagents(_ j: JSON) -> Int? {
+        awaitedEntries(j)?.filter { $0["kind"].string == "subagent" }.count
+    }
+    private static func awaitedEntries(_ j: JSON) -> [JSON]? {
+        j["pendingBackgroundTasks"].array?.filter { $0["awaited"].bool != false }
     }
 }
 
@@ -183,6 +193,7 @@ public struct ThreadRead: Equatable, Sendable {
     public var putAway = false
     /// As in `ThreadSummary`.
     public var awaitedBackgroundTasks: Int?
+    public var awaitedSubagents: Int?
 
     public init(threadId: String, status: T3Status, title: String? = nil, activeRunId: String? = nil,
                 pendingRequestCount: Int = 0, items: [ActivityItem] = [], hasMore: Bool = false, latestRunId: String? = nil,
@@ -209,6 +220,7 @@ public struct ThreadRead: Equatable, Sendable {
             run: (j["recentRuns"].array ?? []).compactMap(RunInfo.init(json:)).max(by: { $0.ordinal < $1.ordinal }))
         putAway = t["settled"].bool == true || t["snoozed"].bool == true || t["archived"].bool == true
         awaitedBackgroundTasks = ThreadSummary.awaitedBackgroundTasks(t)
+        awaitedSubagents = ThreadSummary.awaitedSubagents(t)
     }
 }
 

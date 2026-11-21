@@ -381,8 +381,10 @@ struct PermissionPanel: View {
             } else {
                 Text(verbatim: "Waiting for approval in T3 Code").font(.system(size: 13)).foregroundStyle(Theme.grey)
             }
-            ApprovalButtons(model: model, session: session, commandVisibleInFull: !long || showFull, armed: armed || snapshotMode)   // opt-in; empty unless inline approvals are on (ApprovalSetup.swift)
-            Button { Task { await model.jump(session: session) } } label: { Pill(text: "Review in T3 Code", fill: Theme.lime) }.buttonStyle(.plain)
+            // Allow / Deny are opt-in (ApprovalSetup.swift); without them this is only "Review in T3 Code".
+            ApprovalButtons(model: model, session: session, commandVisibleInFull: !long || showFull, armed: armed || snapshotMode) {
+                Task { await model.jump(session: session) }
+            }
         }
         .padding(12).frame(maxWidth: .infinity, alignment: .leading)
         .background(RoundedRectangle(cornerRadius: 10).fill(Theme.cardRaised))
