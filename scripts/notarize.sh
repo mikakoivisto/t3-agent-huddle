@@ -38,12 +38,8 @@ xcrun stapler staple "$APP"
 rm -f "$ZIP"; (cd dist && ditto -c -k --keepParent "Agent Huddle.app" AgentHuddle.zip)
 spctl --assess --type execute --verbose=2 "$APP"
 
-# 2. The DMG: the app and a link to /Applications to drag it onto.
-STAGE="$(mktemp -d)/Agent Huddle"; mkdir -p "$STAGE"
-ditto "$APP" "$STAGE/Agent Huddle.app"
-ln -s /Applications "$STAGE/Applications"
-rm -f "$DMG"
-hdiutil create -volname "Agent Huddle" -srcfolder "$STAGE" -ov -format UDZO "$DMG" >/dev/null
+# 2. The DMG: the stapled app, a link to /Applications to drag it onto, and the branded window (scripts/make-dmg.sh).
+scripts/make-dmg.sh "$APP" "$DMG"
 codesign --force --timestamp --sign "$SIGN_IDENTITY" "$DMG"
 notarize "$DMG"
 xcrun stapler staple "$DMG"

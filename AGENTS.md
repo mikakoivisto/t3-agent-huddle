@@ -13,6 +13,7 @@ swift test                                    # about 1 s, loopback fake only
 swift test --filter SecurityTests             # one suite, by struct name (not the @Suite title)
 .build/debug/AgentHuddle --snapshot DIR       # render every UI state to PNGs and exit
 scripts/build-app.sh                          # dist/Agent Huddle.app (icon, MIT license): Developer ID signed if one is in your keychain, else ad-hoc
+scripts/make-dmg.sh "dist/Agent Huddle.app" OUT.dmg   # the branded DMG (installs the hash-pinned dmgbuild into a temp venv)
 ```
 
 - **Toolchain:** Xcode with Swift 6.x on macOS 14+. The package builds in Swift 5 language mode (`swiftLanguageModes: [.v5]`).
