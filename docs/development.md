@@ -53,6 +53,7 @@ The app reads exactly one T3 file, `~/.t3/userdata/server-runtime.json` (host/po
 - **Signing dry run:** on a push to a `build/**` branch, CI also signs with the Developer ID, notarizes and staples the app and a DMG (`scripts/notarize.sh`) and uploads both as `AgentHuddle-signed-<sha>`, without publishing. Pull requests never get the signing secrets.
 - **Release** (`.github/workflows/release.yml`) runs when you push a tag like `v0.2.1`: tests, a release build with that version, Developer ID signing, notarization and stapling of the app and the DMG, then a GitHub release with `AgentHuddle.dmg`, `AgentHuddle.zip` and `SHA256SUMS`.
 - **Signing secrets** (repository secrets, never in the repo or logs): `MACOS_CERT_P12` (the Developer ID Application certificate and key, base64), `MACOS_CERT_PASSWORD`, `NOTARY_KEY_P8` (App Store Connect API key, base64), `NOTARY_KEY_ID`, `NOTARY_ISSUER_ID`, `APPLE_TEAM_ID`. `scripts/ci-signing-keychain.sh` puts them in a throwaway keychain and a temp file and deletes both after the job.
+- **The DMG** is made by `scripts/make-dmg.sh APP OUT.dmg` (also on its own, without signing): the branded window, laid out by `dmgbuild` (pinned by hash in `scripts/dmg-requirements.txt`). See spec 11.
 - **Local builds** sign with the first "Developer ID Application" identity in your keychain, else ad-hoc. `SIGN_IDENTITY` overrides it.
 
 ## Layout

@@ -44,7 +44,16 @@
 1. Checks that the app is signed with a Developer ID (`codesign -dvv`, the authority lines) and, with `APPLE_TEAM_ID`, by that team.
 2. Submits the zip with `xcrun notarytool submit --wait` (App Store Connect API key: `NOTARY_KEY_PATH`, `NOTARY_KEY_ID`, `NOTARY_ISSUER_ID`); anything but `Accepted` prints Apple's log and fails.
 3. Staples the ticket to the app, zips it again, checks it with `spctl --assess --type execute`.
-4. Builds `dist/AgentHuddle.dmg` (the app and an `/Applications` link, UDZO), signs it, notarizes and staples it, checks it with `spctl --assess --type open`.
+4. Builds `dist/AgentHuddle.dmg` with `scripts/make-dmg.sh` (below), signs it, notarizes and staples it, checks it with `spctl --assess --type open`.
+
+### The DMG window (`scripts/make-dmg.sh`)
+
+- **Contents:** the app, a link to `/Applications`, UDZO.
+- **Background:** rendered by the app itself (`AgentHuddle --dmg-background DIR`, `DMGBackground.swift`): the dark panel colours, the "Agent Huddle" wordmark with a lime dot and rule, "Drag the app onto Applications to install.", the release version top right, a dashed lime arrow from the app to Applications, and four buddies standing bottom right. 660×400 at 1x and 2x, joined into one TIFF with `tiffutil` so Finder shows the sharp one on a Retina screen.
+- **Label plates:** Finder draws icon labels black in light mode and white in dark mode, and a DMG cannot set their colour, so each label sits on a mid-grey plate (`#767A70`, about 4.5:1 for both). The plates are 124 pt wide, enough for "Agent Huddle.app" when Finder shows every extension.
+- **Finder's path bar** is a global Finder setting and covers the bottom 28 pt when it is on; nothing important is drawn there.
+- **Layout:** the window's `.DS_Store` (icon view, 128 pt icons, 13 pt text, no toolbar or sidebar, icon centres matching the background) is written by [dmgbuild](https://github.com/dmgbuild/dmgbuild) (MIT), not by scripting Finder, so it works headless in CI. It is installed into a throwaway virtualenv from `scripts/dmg-requirements.txt`: wheels only, pinned by hash, because the release job that runs it holds the signing keychain. `DMGBUILD=/path/to/dmgbuild` uses one you already have.
+- **Checked** by mounting a DMG built this way and capturing its Finder window (dark mode, path bar on): the background fills the window and the labels sit on their plates. Light mode was not captured; the plate colour is chosen to work for black labels too.
 
 Prints submission ids and statuses only. A new team's first submission can take hours (seen: over 30 minutes, then accepted); later ones take seconds.
 

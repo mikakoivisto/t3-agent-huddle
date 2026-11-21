@@ -22,6 +22,7 @@ struct Options {
     var sound = false
     var noToken = false
     var iconFile: URL?
+    var dmgBackgroundDir: URL?
     var printWindowId = false
     var recordDir: URL?
     var runtimeFile: URL?
@@ -34,6 +35,7 @@ func parseArgs() -> Options {
         switch a {
         case "--sound": o.sound = true
         case "--icon": if let v = it.next() { o.iconFile = URL(fileURLWithPath: v) }   // render the 1024px app icon and exit (build-app.sh)
+        case "--dmg-background": if let v = it.next() { o.dmgBackgroundDir = URL(fileURLWithPath: v) }   // render the DMG background and exit (make-dmg.sh)
 #if DEBUG
         // Development and demo switches. A release build refuses all of them, so nothing that launches the shipped app (a login
         // item, another process) can redirect its token to another endpoint, swap the credential stores, or move its files.
@@ -70,6 +72,7 @@ let options = parseArgs()
     app.setActivationPolicy(.accessory)
     EditKeys.installMainMenu()
     if let icon = options.iconFile { AppIcon.writePNG(to: icon); exit(0) }
+    if let dir = options.dmgBackgroundDir { DMGBackground.write(to: dir); exit(0) }
     let log = HuddleLog()
     let sound: @Sendable () -> Void = { NSSound(named: "Glass")?.play() }
     let quiet: @Sendable () -> Void = { }
